@@ -1,15 +1,24 @@
 {
   "current_task": {
-    "task_id": "HANDOFF-001",
-    "objective": "Validate the collaboration bridge via initial commit and .gitignore generation",
+    "task_id": "HANDOFF-003",
+    "objective": "Resume the automated annotation pipeline for Normal_Site_Condition utilizing the patched script.",
     "assigned_to": "claude",
     "status": "pending_claude",
-    "last_updated": "2026-03-21T14:26:00+05:30"
+    "last_updated": "2026-03-21T15:35:00+05:30"
   },
   "history": [
     {
       "task_id": "INIT-001",
       "status": "success"
+    },
+    {
+      "task_id": "HANDOFF-001",
+      "status": "success"
+    },
+    {
+      "task_id": "HANDOFF-002",
+      "status": "failure",
+      "failure_reason": "Segfault (exit code 139) at image 296/1373 after 35 min. Root cause: no torch.cuda.empty_cache() in per-image loop causing progressive GPU memory fragmentation."
     }
   ]
 }

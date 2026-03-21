@@ -100,7 +100,34 @@ Output/
 logs/
 
 # =========================
-# OS
+# Binary Assets & Large Files
 # =========================
-desktop.ini
-$RECYCLE.BIN/
+*.mp4
+*.zip
+*.pdf
+*.pptx
+*.mp3
+*.docx
+*.png
+*.jpg
+*.jpeg
+
+# Finalized Annotation Previews (Keep logic, ignore generated images)
+v9_normal_preview.png
+smoke_test_*.png
+annotation_preview*.png
+live_progress_preview*.png
+live_yolo_preview*.png
+normal_annotation_preview.png
+
+# Other
+categorize_log.txt
+dusty_rescan_log_v2.txt
+extract_results.txt
+generate_dust_log.txt
+generate_lowlight_log.txt
+lowlight_rescan_log*.txt
+methodology.txt
+pptx_text.txt
+presentation_text.txt
+nul

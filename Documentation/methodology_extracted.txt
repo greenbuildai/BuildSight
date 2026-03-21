@@ -1,0 +1,1427 @@
+  
+   
+BuildSight 
+Methodology 
+AI-Powered Construction Safety Monitoring System with GIS-
+Based Spatial Risk Analysis 
+   
+Construction Safety Monitoring System 
+SASTRA Deemed University 
+School of Civil Engineering 
+Thanjavur, Tamil Nadu 
+  
+  
+1. Project Overview 
+BuildSight is an integrated construction safety monitoring system that combines advanced 
+computer vision technology with Geographic Information Systems (GIS) for comprehensive 
+spatial risk analysis. The project addresses critical safety challenges in multi-storey construction 
+sites through real-time worker detection, Personal Protective Equipment (PPE) compliance 
+monitoring, and spatial risk visualization. 
+1.1 Project Architecture 
+The project follows a three-phase parallel execution strategy, ensuring simultaneous 
+advancement of AI model development (Phase A) and GIS-based spatial analysis (Phase B) 
+across all academic review cycles: 
+•        Phase A: AI Vision Model Development & Evaluation 
+•        Phase B: GIS-Based Spatial Safety Mapping 
+This dual-track approach ensures that technical model development and civil engineering 
+spatial relevance evolve synergistically, resulting in a cohesive safety monitoring solution. 
+1.2 Research Objectives 
+The primary objectives of this research are: 
+1.     Develop and evaluate AI-powered computer vision models for real-time construction 
+worker and PPE detection under diverse site conditions 
+2.     Integrate spatial analysis capabilities through GIS to map worker density and identify 
+high-risk zones across multi-storey construction sites 
+3.     Address occlusion challenges inherent in crowded and multi-storey construction 
+environments 
+4.     Create a unified real-time safety monitoring application suitable for industry 
+deployment 
+ 
+ 
+1.3 Expected Contributions 
+This research is expected to contribute to construction safety management through: 
+•        Comparative analysis of state-of-the-art computer vision models (YOLOv8n, 
+SAMURAI, YOLACT++) for construction safety applications 
+•        Novel integration of AI detection outputs with GIS-based spatial risk mapping for 
+multi-storey sites 
+•        Development of occlusion-handling mechanisms tailored for crowded construction 
+environments 
+•        Production-ready safety monitoring system deployable in real-world construction 
+projects 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+2. Data Collection & Preprocessing 
+High-quality training data is essential for AI model development. This section details the 
+comprehensive data collection and preprocessing methodology employed across all review 
+phases. 
+2.1 Primary Data Source: Construction Site CCTV 
+Primary training and validation data is collected from operational construction sites using 
+existing CCTV surveillance infrastructure. 
+Site Specifications: 
+•        Site Type: Ground + 1 floor (G+1) residential building construction 
+•        Project Duration: 6-8 months (data collection during active construction phase) 
+•        Site Area: Approximately 2,000 m² construction footprint 
+•        Worker Count: 15-30 workers per day (varying by construction phase) 
+•        Camera Coverage: 4 fixed CCTV cameras with overlapping coverage, positioned at 
+corners for maximum site visibility 
+Camera Specifications: 
+Parameter Specification Justification 
+Resolution 1920×1080 pixels (Full 
+HD) 
+Sufficient detail for worker and PPE 
+detection 
+Frame Rate 25 FPS (native) Standard CCTV frame rate, ensures 
+smooth motion 
+Recording Format H.264 compression Efficient storage with acceptable quality 
+loss 
+Bitrate 4 Mbps per camera Balances quality and storage requirements 
+Field of View 90-110 degrees Wide coverage of construction zones 
+Mounting Height 3-4 meters Optimal viewing angle for worker detection 
+Stream Protocol RTSP (Real-Time 
+Streaming Protocol) 
+Standard for IP camera integration 
+Collection Period: 
+•        Duration: 30 consecutive days (720 hours total recording time) 
+•        Active Recording: Based on motion detection (approximately 8-10 hours per day 
+during working hours) 
+•        Total Footage: ~240-300 hours of construction activity across 4 cameras 
+•        Storage Requirements: ~4 Mbps × 4 cameras × 300 hours × 3,600 seconds/hour ÷ 8 
+bits/byte ≈ 2,160 GB (2.1 TB) 
+2.2 Supplementary Data Sources: Public Datasets 
+To ensure model generalization and fill gaps in CCTV footage (particularly for specific scenarios 
+like dusty conditions or extreme crowds), supplementary data is obtained from established 
+public construction safety datasets. 
+Dataset Selection Criteria: 
+● Relevance: Dataset must contain construction site imagery with workers and PPE 
+annotations 
+●  Quality: Minimum resolution of 640×480 pixels, clear visibility of subjects 
+●  Annotations: Bounding box annotations in standard format (YOLO, COCO, or Pascal 
+VOC), minimum 80% annotation completeness 
+●  Licensing: Open license allowing research use (Creative Commons, MIT, Apache, etc.) 
+●  Diversity: Dataset should contribute unique scenarios not well-covered by CCTV (e.g., 
+dust, low-light, crowds) 
+ 
+ 
+ 
+Selected Public Datasets: 
+Dataset Name Size Primary Use Images Used 
+Safety-Helmet-Wearing-
+Dataset 
+7,581 
+images 
+Normal conditions 
+baseline 
+1,000 
+GDUT-HWD 3,174 
+images 
+Construction PPE 
+detection 
+1,000 
+SFCHD 12,373 
+images 
+Low-light scenarios 2,000 
+ExtCon 506 images Dusty/foggy 
+conditions 
+506 (all) 
+Roboflow Construction 
+Hazards 
+~500 
+images 
+Dusty scenarios 500 
+CrowdHuman 15,000 
+images 
+Dense crowd 
+detection 
+500 
+WiderPerson 13,382 
+images 
+Extreme crowd 
+density 
+300 
+  
+  
+ 
+ 
+ 
+2.3 Frame Extraction from CCTV Footage 
+CCTV video streams are converted to individual image frames for model training and testing. 
+Extraction Parameters: 
+•        Extraction Rate: 2 frames per second (2 FPS) from native 25 FPS video 
+•        Sampling Strategy: Uniform temporal sampling (extract every 12.5th frame: 
+frame indices 0, 12, 25, 37, ...) 
+•        Output Format: JPEG images at 95% quality (minimal quality loss, ~60% file 
+size reduction vs. PNG) 
+•        Resolution: Maintain native 1920×1080 pixels (no downsampling during 
+extraction) 
+Rationale for 2 FPS Extraction Rate: 
+•        Temporal Coverage: Workers on construction sites move at approximately 1 meter 
+per second. At 2 FPS extraction, we capture worker positions every 0.5 seconds, 
+providing adequate temporal resolution for safety monitoring. 
+•        Redundancy Reduction: Adjacent frames at 25 FPS (40ms apart) are highly similar, 
+resulting in training data redundancy. Sampling at 2 FPS (500ms apart) significantly 
+reduces redundancy while preserving meaningful scene changes. 
+•        Storage Efficiency: 2 FPS extraction reduces dataset size by 12.5× compared to 
+using all frames (25 FPS), making data management feasible on standard hardware. 
+•        Processing Speed: Smaller dataset enables faster preprocessing, annotation, and 
+training iterations. 
+Expected Frame Counts: 
+•        Total CCTV footage: 300 hours × 3,600 seconds/hour × 2 FPS = 2,160,000 frames 
+•        After motion detection filtering (only active construction periods): ~1,800,000 frames 
+•        After duplicate removal (see Section 5.5): ~1,530,000 frames (15% reduction) 
+ 
+ 
+ 
+2.4 Data Annotation 
+Accurate annotations are critical for supervised model training. A semi-automated annotation 
+workflow combines pre-trained model predictions with manual verification. 
+Annotation Workflow: 
+1. Pre-Annotation: Run pre-trained YOLOv8n (COCO weights) on all extracted 
+frames to generate initial bounding box proposals. COCO model detects 'person' 
+class which aligns with 'worker' class needed for construction safety. 
+2.  Manual Refinement: Human annotators use Label Studio annotation tool to: 
+verify and adjust bounding boxes proposed by pre-trained model, classify each 
+detection into classes (Worker with Helmet, Worker without Helmet, Safety Vest, 
+No Safety Vest), add missing detections (false negatives from pre-annotation), 
+remove incorrect detections (false positives). 
+3.  Quality Control: 10% of annotated frames randomly selected for secondary 
+review by different annotator. Calculate inter-annotator agreement using 
+Intersection over Union (IoU): if IoU >0.85 for >90% of bounding boxes, 
+annotation quality is acceptable. Frames with disagreement resolved through 
+consensus discussion. 
+4.  Annotation Classes: Worker-Helmet (person wearing hard hat/helmet), Worker-
+NoHelmet (person without helmet), SafetyVest (person wearing high-visibility 
+vest), NoSafetyVest (person without vest), Heavy Equipment (excavators, 
+concrete mixers, cranes - for hazard proximity analysis). 
+Annotation Statistics (Expected): 
+Metric Target Value 
+Total Annotated Frames 65,000 (CCTV: 60,000 + Public: 5,000) 
+Bounding Boxes per Frame (average) 3.2 (varies 1-12 depending on scenario) 
+Total Bounding Boxes ~208,000 annotations 
+Annotation Hours ~650 hours (10 seconds per frame average) 
+Annotation Quality (IoU agreement) >85% for >90% of boxes 
+ 
+2.5 Preprocessing Pipeline 
+Raw extracted frames undergo preprocessing to enhance quality and improve model training 
+effectiveness. 
+Preprocessing Steps: 
+● Duplicate Removal: Calculate perceptual hash (pHash) for each frame 
+using average hash algorithm (8×8 grayscale thumbnail). Compare hashes 
+between consecutive frames: if Hamming distance <5 bits (out of 64), 
+frames are considered duplicates. Remove duplicates, keeping only first 
+occurrence. Expected reduction: 5-15% of frames (captures when camera 
+views static scene with no worker movement). 
+● Resolution Standardization: All frames resized to 1280×720 pixels (720p 
+HD). Maintains aspect ratio by letterboxing (adding black bars if 
+necessary). Rationale: standardized resolution ensures consistent input 
+size for AI models and reduces storage requirements (from 1920×1080 to 
+1280×720 = 55% pixel reduction). 
+●  Brightness Normalization: Calculate average pixel intensity for each frame. 
+If intensity <70 (scale 0-255), frame is classified as 'low-light' and 
+undergoes gamma correction. Gamma correction formula: Output = 255 × 
+(Input/255)^γ, where γ=0.7 for low-light enhancement. Post-correction, 
+apply adaptive histogram equalization (CLAHE) to improve contrast in 
+shadowed regions. 
+●  Haze Detection & Enhancement: Calculate haze score using dark channel 
+prior method: Dark Channel = min over RGB channels (min over 15×15 
+pixel window (pixel intensity)). Haze score = 1 - (mean dark channel value / 
+255). If haze score >0.4, frame is classified as 'dusty/hazy' and undergoes 
+dehazing. Dehazing algorithm: Dark channel prior + guided filter for edge 
+preservation. Dehazing parameters: ω=0.95 (atmosphere retention), t₀=0.1 
+(minimum transmission). 
+● Noise Reduction: Apply Gaussian blur with kernel size 3×3 and σ=0.5 to all 
+frames. Reduces sensor noise and JPEG compression artifacts without 
+significantly degrading edge sharpness. Particularly effective for night-time 
+CCTV footage with higher noise levels. 
+ 
+ 
+Preprocessing Output Statistics (Expected): 
+Preprocessing Stage Input Frames Output Frames Reduction 
+Initial Extraction 2,160,000 2,160,000 0% 
+Motion Filtering 2,160,000 1,800,000 17% 
+Duplicate Removal 1,800,000 1,530,000 15% 
+Final Processed Dataset 1,530,000 65,000 
+(annotated 
+subset) 
+96% (sampling) 
+The preprocessing pipeline is implemented in Python 3.10 using OpenCV 4.8 library for image 
+processing operations. Processing is parallelized across 8 CPU cores, achieving ~500 frames 
+per second processing throughput. 
+  
+  
+  
+  
+  
+3. Model Training & Evaluation Framework 
+This section establishes the comprehensive methodology for training AI models and 
+systematically evaluating their performance for construction safety monitoring applications. 
+3.1 Dataset Splitting Strategy 
+The annotated dataset (65,000 frames) is partitioned into training, validation, and test sets to 
+enable model development and rigorous evaluation. 
+Dataset Split Frame Count Percentage Purpose 
+Training Set 45,500 frames 70% Model parameter optimization 
+during training 
+Validation Set 9,750 frames 15% Hyperparameter tuning and 
+early stopping 
+Test Set (4 
+scenarios) 
+9,750 frames 15% Final model evaluation under 
+realistic conditions 
+Test Set Scenario Distribution: 
+•        S1 Normal Conditions: 2,000 frames (20.5% of test set) 
+•        S2 Dusty Environment: 2,500 frames (25.6% of test set) 
+•        S3 Low-Light Conditions: 2,500 frames (25.6% of test set) 
+•        S4 Crowded Conditions: 2,750 frames (28.2% of test set) - highest allocation due to 
+safety criticality 
+Splitting Methodology: 
+● Temporal Split for CCTV Data: Training set: Days 1-21 of 30-day collection 
+period, Validation set: Days 22-25, Test set: Days 26-30. Rationale: Temporal 
+split prevents data leakage from consecutive frames and tests model 
+generalization to future time periods. 
+● Random Split for Public Datasets: Public dataset images are randomly shuffled 
+and split 70-15-15, ensuring diverse representation across all sets. 
+● Stratification by Scenario: Test set is stratified to ensure adequate representation 
+of each scenario type (normal, dusty, low-light, crowded), with emphasis on 
+crowded scenario (highest safety importance). 
+3.2 Training Configuration 
+3.2.1 Hardware & Software Environment 
+Training Hardware: 
+•        GPU: NVIDIA RTX 4050 (6GB GDDR6 VRAM, 2,560 CUDA cores, 80 Tensor cores) 
+•        CPU: Intel Core i7-12650H (10 cores, 16 threads, up to 4.7 GHz) 
+•        RAM: 32GB DDR5-4800MHz 
+•        Storage: 512GB NVMe PCIe 4.0 SSD (for fast data loading during training) 
+Software Stack: 
+•        Operating System: Ubuntu 22.04 LTS (Linux for optimal GPU driver support) 
+•        Python: Version 3.10.12 
+•        PyTorch: Version 2.1.0 with CUDA 12.1 
+•        Ultralytics YOLOv8: Version 8.0.196 
+•        CUDA Toolkit: 12.1.0 (GPU acceleration) 
+•        cuDNN: Version 8.9.2 (deep learning primitives) 
+ 
+ 
+ 
+ 
+ 
+ 
+3.2.2 YOLOv8n Training Hyperparameters 
+Hyperparameter Value Description 
+Input Size 640×640 pixels Standard YOLO input resolution for optimal 
+detection 
+Batch Size 16 images per 
+batch 
+Maximum batch size fitting in 6GB VRAM 
+Epochs 100 (early 
+stopping at 20) 
+Maximum training iterations with early stopping 
+Initial Learning Rate 0.01 Standard YOLO learning rate 
+Final Learning Rate 0.0001 Learning rate after cosine decay 
+Momentum 0.937 SGD momentum for stable convergence 
+Weight Decay 0.0005 L2 regularization to prevent overfitting 
+Warmup Epochs 3 Gradual learning rate increase at start 
+Optimizer AdamW Adaptive learning rate optimization 
+IoU Threshold (NMS) 0.45 Non-Maximum Suppression overlap threshold 
+Confidence Threshold 0.25 (training), 
+0.5 (inference) 
+Minimum detection confidence score 
+3.2.3 Data Augmentation Techniques 
+Data augmentation artificially expands the training dataset by applying transformations to 
+existing images, improving model robustness and generalization. 
+Augmentation Parameters Probability Purpose 
+Mosaic 4 images 
+combined 
+100% Simulate crowded scenes, 
+small object detection 
+Mixup α=0.3 (blend 
+factor) 
+50% Improve occlusion handling 
+Random Rotation ±10 degrees 50% Camera angle variations 
+Horizontal Flip Mirror image 50% Left-right symmetry 
+Scale 0.5× to 1.5× 50% Simulate varying worker 
+distances 
+Brightness Adjust ±20% luminance 30% Lighting condition variations 
+Contrast Adjust ±20% contrast 30% Camera exposure variations 
+Hue Shift ±5 degrees 20% Color temperature variations 
+Cutout 16 random 
+boxes, 40% fill 
+30% Simulate partial occlusions 
+ 
+3.3 Evaluation Metrics 
+Model performance is quantified using standard object detection metrics, with emphasis on 
+safety-critical measures (recall). 
+Primary Metrics: 
+•        Mean Average Precision (mAP): 
+mAP@0.5: Average precision calculated at IoU (Intersection over Union) threshold of 0.5. A 
+detection is considered correct if its IoU with ground truth ≥0.5. This is the standard PASCAL 
+VOC metric, providing a lenient evaluation suitable for real-time applications where approximate 
+localization is acceptable. 
+mAP@0.5:0.95: Average precision calculated across IoU thresholds from 0.5 to 0.95 in 0.05 
+increments (10 thresholds total), then averaged. This COCO metric provides stricter evaluation, 
+rewarding precise bounding box localization. 
+•        Precision: 
+Precision = True Positives / (True Positives + False Positives). Measures the proportion of 
+correct detections among all detections. High precision means low false alarm rate, reducing 
+unnecessary safety alerts. 
+•        Recall: 
+Recall = True Positives / (True Positives + False Negatives). Measures the proportion of ground 
+truth objects successfully detected. High recall means low missed detection rate, critical for 
+safety (missing a worker in a hazard zone could be fatal). 
+•        F1-Score: 
+F1-Score = 2 × (Precision × Recall) / (Precision + Recall). Harmonic mean of precision and 
+recall, providing balanced performance measure. Useful for comparing models with different 
+precision-recall trade-offs. 
+•        Inference Speed: 
+Measured as Frames Per Second (FPS) or milliseconds per frame. Critical for real-time 
+applications. Minimum requirement: 10 FPS for continuous monitoring (100ms latency per 
+frame). 
+ 
+ 
+ 
+Performance Targets: 
+Metric Target Value Rationale 
+mAP@0.5 ≥0.75 (75%) Industry-standard baseline for object 
+detection 
+Recall ≥0.85 (85%) Safety-critical: minimize missed worker 
+detections 
+Precision ≥0.80 (80%) Acceptable false positive rate (<20%) 
+F1-Score ≥0.82 (82%) Balanced precision-recall performance 
+Inference Speed ≥10 FPS Real-time processing requirement 
+3.4 Scenario-Based Evaluation 
+Models are evaluated separately under four realistic construction site scenarios to assess 
+robustness to environmental challenges. Each scenario tests 500 manually verified frames from 
+the test set. 
+3.4.1 Scenario 1: Normal Conditions 
+•        Objective: Establish baseline performance under ideal conditions 
+•        Conditions: Clear weather, good lighting (9 AM - 5 PM), moderate visibility 
+(>90%), low-to-moderate worker density (1-3 workers per frame) 
+•        Evaluation Weight: 20% (baseline reference point) 
+•        Expected Performance: mAP@0.5 >0.85, Recall >0.90 (near-perfect detection in 
+ideal conditions) 
+ 
+ 
+3.4.2 Scenario 2: Dusty Environment 
+•        Objective: Test robustness when dust/haze obscures visibility 
+•        Conditions: Dusty or hazy weather, reduced visibility (50-80%), activities: 
+excavation, demolition, material handling, haze score >0.4 (dark channel prior 
+metric) 
+•        Evaluation Weight: 25% (common condition during earth-moving activities) 
+•        Expected Challenge: 10-15% reduction in recall due to obscured worker 
+silhouettes 
+•        Mitigation: Preprocessing with dehazing algorithm (Section 5.5.4) should 
+recover ~5% of lost performance 
+3.4.3 Scenario 3: Low-Light Conditions 
+•        Objective: Ensure workers are detected in poor lighting (dawn/dusk) 
+•        Conditions: Dawn (7:00-8:00 AM) or dusk (6:00-7:00 PM), low brightness (<80 
+pixel intensity on 0-255 scale), heavy shadows from building structure 
+•        Evaluation Weight: 25% (work often begins at dawn and continues to dusk) 
+•        Expected Challenge: 15-20% reduction in recall, particularly for workers in 
+heavily shadowed regions 
+•        Mitigation: Gamma correction + adaptive histogram equalization (Section 
+5.5.3) to brighten dark regions 
+3.4.4 Scenario 4: Crowded Conditions 
+•        Objective: Test ability to detect ALL workers in crowds - safety critical 
+•        Conditions: ≥5 workers visible per frame, high worker density (>0.5 workers per 
+100m² visible area), multiple workers in close proximity with occlusions, activities: 
+team coordination, concrete pour, steel erection 
+•        Evaluation Weight: 30% (highest weight due to safety criticality) 
+•        Expected Challenge: 20-30% reduction in recall due to partial occlusions, 
+overlapping bounding boxes, small object sizes (distant workers) 
+•        Safety Importance: Missing even 1 worker in a crowded zone could result in 
+injury/fatality. High recall is paramount. 
+3.5 Model Selection Methodology 
+The final model for deployment is selected through a weighted scoring approach that prioritizes 
+safety-critical scenarios. 
+Selection Formula: 
+Total_Score = 0.20×(S1_mAP@0.5) + 0.25×(S2_mAP@0.5) + 0.25×(S3_mAP@0.5) + 
+0.30×(S4_mAP@0.5) 
+Decision Criteria: 
+● Primary: Model with highest Total_Score is selected 
+● Speed Constraint: Models achieving <10 FPS on target hardware (RTX 4050) 
+are disqualified, regardless of accuracy score 
+● Tie-Breaker: If two models have Total_Score difference <0.02 (within 2% of each 
+other), select the model with higher recall in S4 Crowded scenario (safety 
+priority) 
+● Memory Constraint: If GPU memory usage during inference exceeds 5GB (out of 
+6GB available), model is disqualified or requires quantization 
+Example Model Selection Comparison: 
+Model S1 (20%) S2 (25%) S3 (25%) S4 (30%) Total 
+Score 
+FPS 
+YOLOv8n 0.85 0.78 0.75 0.70 0.763 25 
+FPS 
+SAMURAI 0.87 0.80 0.78 0.74 0.790 8 FPS 
+  
+YOLACT++ 0.83 0.76 0.73 0.72 0.758 15 
+FPS 
+Result: SAMURAI achieves highest Total_Score (0.790) but is disqualified for failing speed 
+requirement (<10 FPS). YOLOv8n is selected with second-highest score (0.763) and fastest 
+inference (25 FPS), providing excellent real-time performance for construction safety 
+monitoring. 
+  
+4. GIS Integration Methodology 
+This section details the comprehensive methodology for integrating AI detection outputs with 
+Geographic Information Systems (GIS) to enable spatial safety analysis in multi-storey 
+construction environments. 
+4.1 GIS Software & Tools 
+The GIS integration leverages open-source geospatial software for spatial data management, 
+analysis, and visualization. 
+Software Component Version Purpose 
+QGIS (Quantum GIS) 3.34 LTR Desktop GIS for spatial visualization 
+and analysis 
+PostgreSQL + PostGIS 15.4 + 3.4 Spatial database for storing detection 
+coordinates 
+Python GeoPandas 0.14.0 Spatial data manipulation in Python 
+scripts 
+Shapely 2.0.2 Geometric operations (point-in-
+polygon, distance calc) 
+PyProj 3.6.1 Coordinate system transformations 
+Folium / Leaflet 0.15.0 Web-based interactive map 
+visualization 
+ 
+4.2 Coordinate System Definition 
+A local site coordinate system is established to facilitate accurate spatial referencing and ensure 
+consistency across all GIS operations. 
+•        Coordinate System Type: Local Cartesian coordinate system (metric units: 
+meters) 
+•        Origin Point (0,0): Southwest corner of construction site boundary 
+•        X-Axis Direction: East (positive X increases eastward) 
+•        Y-Axis Direction: North (positive Y increases northward) 
+•        Z-Axis Direction: Vertical (positive Z increases upward, Z=0 at ground level) 
+•        Units: Meters for all spatial measurements (X, Y, Z coordinates) 
+For integration with global coordinate systems (e.g., GPS, satellite imagery): 
+•        Global Reference System: WGS 84 / UTM Zone 44N (EPSG:32644) - appropriate 
+for Tamil Nadu, India 
+•        Site Origin (Global): Determined via DGPS survey, recorded as latitude/longitude 
+(e.g., 10.7905°N, 79.1355°E) 
+•        Transformation: Local coordinates converted to UTM using origin offset: UTM_X = 
+UTM_Origin_X + Local_X, UTM_Y = UTM_Origin_Y + Local_Y 
+ 
+4.3 Camera Calibration & Coordinate Transformation 
+Camera calibration establishes the mathematical relationship between 2D image coordinates 
+(pixels) and 3D world coordinates (meters), enabling accurate mapping of detected workers to 
+GIS positions. 
+4.3.1 Intrinsic Calibration 
+Intrinsic parameters describe the camera's internal optical characteristics. 
+•        Calibration Method: Zhang's method using checkerboard calibration pattern 
+•        Calibration Pattern: 9×6 checkerboard with 50mm square size 
+•        Calibration Images: 20 images of checkerboard at various orientations and 
+distances (2-10 meters) 
+•        Software: OpenCV calibrateCamera() function in Python 
+Intrinsic Parameters Extracted: 
+•        Focal Length (fx, fy): Millimeters, converted to pixels. Typical values for construction 
+CCTV: fx ≈ 1200 pixels, fy ≈ 1200 pixels (assuming 1920×1080 sensor) 
+•        Principal Point (cx, cy): Image center coordinates in pixels. Typically near image 
+center: cx ≈ 960 pixels, cy ≈ 540 pixels 
+•        Distortion Coefficients (k1, k2, p1, p2, k3): Radial (k) and tangential (p) lens 
+distortion. Used to correct fish-eye effects from wide-angle lenses 
+Camera Matrix (Intrinsic Matrix): 
+K = [[fx, 0, cx], [0, fy, cy], [0, 0, 1]] 
+4.3.2 Extrinsic Calibration 
+Extrinsic parameters describe the camera's position and orientation in the 3D world coordinate 
+system. 
+•        Calibration Method: Measure 6+ ground control points (GCPs) with known 
+world coordinates (X, Y, Z) and identify their pixel positions (u, v) in camera 
+image 
+•        GCP Selection: Distinctive site features visible in camera view: building 
+corners, floor slab edges, equipment bases, survey markers 
+•        GCP Measurement: Total station survey or high-precision DGPS (<5cm 
+accuracy) 
+•        Solving for Extrinsics: Perspective-n-Point (PnP) algorithm using OpenCV 
+solvePnP() function 
+Extrinsic Parameters Extracted: 
+•        Rotation Matrix (R): 3×3 matrix describing camera orientation relative to world 
+coordinate system. Derived from Rodrigues rotation vector (rotation axis and angle) 
+•        Translation Vector (t): 3×1 vector [tx, ty, tz] describing camera position in world 
+coordinates. Example: camera at height 4m looking down at 30° angle: t = [12, 15, 4] 
+meters (X, Y, Z) 
+ 
+4.3.3 Pixel-to-World Coordinate Transformation 
+Transform detected worker bounding box coordinates from 2D image space to 3D world 
+coordinates. 
+Transformation Steps: 
+● Extract Detection Coordinates: For each detected worker bounding box, 
+compute bottom-center point (representing foot position): u = (bbox_x_min 
++ bbox_x_max) / 2, v = bbox_y_max (bottom of bounding box) 
+● Undistort Coordinates: Apply inverse distortion correction using OpenCV 
+undistortPoints() to obtain normalized image coordinates (x_n, y_n) 
+●  Back-Project to 3D Ray: Compute 3D ray direction vector from camera 
+center through image point: Ray_direction = R^(-1) × [[x_n], [y_n], [1]] 
+●  Intersect with Ground Plane: Assuming worker is standing on a known 
+floor level (e.g., Z=0 for ground floor, Z=3.5 for first floor): Compute 
+intersection of ray with horizontal plane Z=floor_height. Solve: World_X = 
+Camera_X + λ × Ray_X, World_Y = Camera_Y + λ × Ray_Y, floor_height = 
+Camera_Z + λ × Ray_Z, where λ is ray parameter (distance along ray). Solve 
+for λ, then compute (World_X, World_Y, floor_height) 
+Floor Level Assignment: 
+•        Method 1 - Y-Coordinate Lookup Table: For each camera, pre-compute vertical 
+calibration lookup table mapping pixel row (v coordinate) to floor level. Example: v < 
+300 pixels → Floor 1 (Z=3.5m), 300 ≤ v < 600 → Ground Floor (Z=0m), v ≥ 600 → 
+Below ground level (exclude) 
+•        Method 2 - Geometric Calculation: Use camera viewing geometry to infer floor level 
+from worker position in image. Workers higher in frame (lower v pixel coordinate) are 
+on higher floors. Geometric formula: Floor_Z = Camera_Z - (v - camera_tilt) × 
+vertical_scale_factor 
+4.4 Spatial Database Schema 
+Worker detections and associated metadata are stored in a PostGIS-enabled PostgreSQL 
+database to enable efficient spatial queries and real-time updates. 
+Database Schema (worker_detections table): 
+Column Name Data Type Description 
+detection_id SERIAL PRIMARY 
+KEY 
+Unique identifier for each detection 
+timestamp TIMESTAMP Detection time (UTC) 
+camera_id VARCHAR(50) Camera identifier (e.g., 'CAM_01') 
+frame_number INTEGER Frame sequence number from video 
+world_x DOUBLE PRECISION X coordinate in local site system (meters) 
+world_y DOUBLE PRECISION Y coordinate in local site system (meters) 
+floor_level INTEGER Floor assignment (0=ground, 1=first, etc.) 
+floor_z DOUBLE PRECISION Z coordinate / elevation (meters) 
+geom GEOMETRY(Point, 
+32644) 
+PostGIS point geometry (UTM 
+coordinates) 
+class_label VARCHAR(50) Detection class (e.g., 'Worker-Helmet') 
+confidence REAL Model confidence score (0-1) 
+bbox_image INTEGER[] Bounding box in image (x_min, y_min, 
+x_max, y_max) 
+Spatial Indexing: 
+•        GiST Index on geom column for fast spatial queries (point-in-polygon, distance 
+calculations) 
+•        B-tree Index on timestamp column for fast time-range queries 
+•        B-tree Index on floor_level column for fast per-floor filtering 
+4.5 Heatmap Generation Algorithms 
+4.5.1 Worker Density Heatmap 
+Density heatmaps visualize worker concentration, identifying potential overcrowding and high-
+traffic areas. 
+Algorithm Steps: 
+●  Grid Discretization: Overlay construction site with uniform 2×2 meter grid cells. 
+Grid bounds: X from 0 to site_width, Y from 0 to site_length. Total grid cells: 
+(site_width / 2) × (site_length / 2). Example: 40m × 60m site → 20 × 30 = 600 grid 
+cells 
+●  Temporal Window Selection: Define sliding time window for temporal 
+aggregation. Default window: 5 minutes (balances real-time responsiveness with 
+statistical stability). Query database for all detections within: current_time - 5 
+minutes ≤ timestamp ≤ current_time 
+● Density Calculation: For each grid cell, count number of worker detections with 
+coordinates falling inside cell boundaries: Density = (Detection count in cell 
+during time window) / (Cell area in m² × Time window in minutes). Units: workers 
+per m² per minute. Example: 4 detections in 4 m² cell over 5 min → Density = 4 / 
+(4 × 5) = 0.2 workers/m²/min 
+● Kernel Density Estimation (KDE): Apply Gaussian kernel smoothing to 
+produce continuous heatmap surface from discrete grid cells. Kernel 
+function: G(d) = exp(-d² / (2σ²)), where d is distance from cell center, σ is 
+bandwidth (standard deviation). Bandwidth selection: σ = 5 meters 
+(approximately 2× grid cell size) for smooth interpolation. For each output 
+pixel, compute weighted sum of nearby grid cell densities using Gaussian 
+kernel 
+● Color Mapping: Map smoothed density values to color gradient for visualization. 
+Color scale: 0-0.1 workers/m²/min → Green (RGB: 0, 255, 0), 0.1-0.3 → Yellow 
+(RGB: 255, 255, 0), 0.3-0.5 → Orange (RGB: 255, 165, 0), >0.5 → Red (RGB: 
+255, 0, 0). Thresholds based on OSHA workspace density guidelines (safe 
+capacity: <0.5 workers/m²) 
+ 
+ 
+4.5.2 Risk-Based Heatmap 
+Risk heatmaps integrate multiple safety factors to provide comprehensive spatial risk 
+assessment beyond worker density alone. 
+Multi-Factor Risk Model: 
+Risk_Score = 0.35×Density_Factor + 0.30×PPE_Factor + 0.20×Hazard_Proximity_Factor + 
+0.15×Movement_Factor 
+Risk Factor Definitions: 
+•        Density_Factor (0-1 scale): Normalized worker density relative to zone capacity. 
+Calculation: Density_Factor = min(Current_Density / Max_Safe_Density, 1.0). 
+Max_Safe_Density varies by work zone type: General circulation: 0.5 workers/m², 
+Formwork area: 0.3 workers/m², Confined space: 0.2 workers/m². Example: Current 
+density 0.4, Max safe 0.5 → Density_Factor = 0.4/0.5 = 0.8 
+•        PPE_Factor (0-1 scale): Proportion of workers without required PPE. Calculation: 
+PPE_Factor = (Workers_without_PPE) / (Total_workers). PPE requirements defined 
+per zone (e.g., excavation requires helmet + vest + boots). Higher factor indicates 
+elevated risk due to non-compliance. Example: 3 workers without helmets out of 10 
+total → PPE_Factor = 0.3 
+•        Hazard_Proximity_Factor (0-1 scale): Risk due to proximity to predefined hazard 
+zones. Hazard types: open edges (fall risk), heavy equipment (collision risk), 
+excavations (cave-in risk), electrical panels (electrocution risk). Calculation using 
+Inverse Distance Weighting (IDW): For each worker, compute distance d to nearest 
+hazard. Proximity_Score = 1 / (1 + d/5) if d ≤ 5 meters, else 0. (5-meter influence 
+radius). Average proximity scores across all workers in grid cell. Example: Worker 
+2m from open edge → Score = 1/(1+2/5) = 0.71 (high risk) 
+•        Movement_Factor (0-1 scale): Indicates high-activity areas where accidents are 
+more likely. Calculation: Compute standard deviation of worker positions over time 
+window. High standard deviation → frequent worker movement → elevated risk. 
+Normalization: Movement_Factor = min(Position_StdDev / 2.0, 1.0). (2 meters = 
+threshold for 'high movement'). Example: Workers moving ~3m within 5min → 
+StdDev ≈ 1.5m → Factor = 0.75 
+ 
+ 
+ 
+4.6 Alert System Configuration 
+Automated alert system monitors spatial database and heatmaps to detect safety violations and 
+trigger notifications. 
+Alert Types & Thresholds: 
+Alert Type Trigger Condition Severity Action 
+Density Exceedance Worker density >0.5 
+workers/m² for >2 min 
+Warning Mobile push 
+notification 
+PPE Non-
+Compliance 
+>30% workers without 
+required PPE in zone 
+Warning Mobile push + log 
+entry 
+Restricted Zone 
+Entry 
+Worker detected in no-
+access zone 
+Critical SMS + audio 
+alarm + push 
+Hazard Proximity Worker within 2m of 
+hazard without PPE 
+Critical SMS + audio 
+alarm + push 
+High Risk Score Risk score >0.8 in any 
+zone for >3 min 
+Critical SMS + audio 
+alarm + push 
+Alert Delivery Mechanisms: 
+•        Mobile Push Notification: Firebase Cloud Messaging (FCM) for instant delivery to 
+site supervisor app (Android/iOS) 
+•        SMS: Twilio API for critical alerts to supervisor mobile phone (fallback if app not 
+running) 
+•        Audio Alarm: Python playsound library triggers audible siren at site office computer 
+(requires critical alerts to be acknowledged) 
+•        Dashboard Notification Panel: Real-time alert feed displayed on web dashboard with 
+color-coded severity indicators 
+Alert Persistence: All triggered alerts logged to PostgreSQL 'alerts' table with timestamp, type, 
+location, severity, and acknowledgment status. Enables historical analysis of safety incidents 
+and supervisor response times. 
+5. First Review Methodology 
+The first review phase establishes the foundational components of the BuildSight 
+system by developing the initial AI detection model and conceptualizing the GIS 
+integration framework. This phase focuses on demonstrating technical feasibility and 
+identifying system limitations that will guide subsequent development. 
+5.1 Phase A: AI Model Training & Real-Time Validation 
+5.1.1 Dataset Preparation 
+The training dataset comprises two primary sources: 
+• Public Construction Safety Datasets: Approximately 5,000 annotated 
+images from established repositories including Safety-Helmet-Wearing-
+Dataset (7,581 images), GDUT-HWD (3,174 images), and SFCHD (12,373 
+images) 
+ Selection criteria for public datasets include:  
+          (a) high-quality annotations with bounding boxes for workers and PPE 
+          (b) diverse construction site environments 
+          (c) varying lighting conditions and camera angles 
+          (d) Creative Commons or research-friendly licensing. 
+• Site-Specific CCTV Footage: Real construction site video data collected 
+from a G+1 residential building project over 30 consecutive days 
+CCTV footage extraction parameters: Frame rate of 2 FPS (frames per second), JPEG 
+format at 95% quality, resolution standardized to 1280×720 pixels (720p HD). The 
+reduced frame rate balances temporal coverage with computational efficiency, as 
+workers move approximately 1 meter per second, ensuring adequate detection 
+sampling. 
+ 
+5.1.2 YOLOv8n Model Configuration 
+ 
+YOLOv8n (YOLO version 8 nano) was selected as the baseline model due to its optimal 
+balance of detection accuracy and inference speed, critical for real-time construction 
+site monitoring. The model configuration specifications are: 
+ 
+5.1.3 Training Procedure 
+The training procedure follows a systematic approach: 
+● Data Split: Training set (70%, ~45,000 frames), validation set (15%, ~10,000 
+frames), test set (15%, ~2,000 frames) 
+● Transfer Learning: Initialize with YOLOv8n pre-trained weights on COCO dataset 
+for faster convergence 
+● Training Environment: Python 3.10, PyTorch 2.1.0, CUDA 12.1 on RTX 4050 
+GPU (6GB VRAM) 
+● Optimization: AdamW optimizer with weight decay of 0.0005, gradient clipping at 
+10.0 to prevent instability 
+● Convergence Monitoring: Track mAP@0.5, precision, and recall on validation 
+set; implement early stopping if no improvement for 20 consecutive epochs 
+5.1.4 Real-Time Inference Validation 
+The trained YOLOv8n model undergoes real-time validation on actual construction site 
+video footage to assess deployment readiness. Validation parameters include: 
+• Test Video Duration: 5 hours of continuous CCTV footage spanning different 
+times of day and site activities 
+• Inference Configuration: Confidence threshold of 0.5, Non-Maximum 
+Suppression (NMS) threshold of 0.45, real-time processing at source frame rate 
+• Performance Metrics: Inference speed (FPS), detection accuracy, false positive 
+rate, missed detection rate 
+• Output Generation: Annotated video files with bounding boxes, detection 
+confidence scores, and frame-by-frame analysis logs 
+5.1.5 Limitations Documentation 
+A critical component of the first review is comprehensive documentation of YOLOv8n 
+limitations observed during real-time validation. Expected challenges include: 
+• Occlusion Issues: Difficulty detecting workers partially obscured by 
+structural elements, equipment, or other workers (estimated 15-25% 
+missed detections in crowded scenarios) 
+• Multi-Storey Constraints: Challenges in distinguishing workers on different 
+floors when multiple levels are visible in a single camera view 
+• Small Object Detection: Reduced accuracy for distant workers where 
+bounding box dimensions fall below 32×32 pixels 
+• Lighting Variations: Performance degradation during dawn/dusk 
+transitions and in heavily shadowed areas 
+• Crowd Handling: Increased false negatives and bounding box overlap in 
+dense worker concentrations (>5 workers per 100m²) 
+These limitations are quantified through systematic analysis and documented with video 
+examples, forming the basis for model improvements in subsequent review phases. 
+ 
+5.2 Phase B: GIS Justification & Spatial Readiness 
+5.2.1 Conceptual GIS Framework 
+The GIS integration conceptual framework establishes the theoretical foundation for 
+spatial safety analysis in multi-storey construction environments. This framework 
+addresses three core spatial challenges: 
+● Spatial Resolution: How to accurately map 2D camera detections to 3D 
+construction site coordinates across multiple floors 
+● Temporal Dynamics: Methods for tracking worker movement patterns and 
+occupancy density over time 
+● Risk Aggregation: Approaches for combining detection data from multiple 
+camera viewpoints into unified spatial risk metrics 
+The framework proposes a layered GIS data model: 
+• Base Layer: Site boundary, structural layout, floor plans (imported as CAD 
+drawings or georeferenced images) 
+• Zone Layer: Defined work zones (excavation, formwork, concrete pour, steel 
+erection areas) with associated safety protocols 
+• Detection Layer: Real-time worker positions derived from camera detections, 
+updated at 2-second intervals 
+• Risk Layer: Calculated risk scores based on worker density, PPE compliance 
+rates, and proximity to hazard zones 
+5.2.2 Site Layout Spatial Modeling 
+Spatial modeling of the construction site involves creating a digital representation of the 
+physical environment suitable for GIS analysis. The modeling process includes: 
+● Site Survey Data Collection: Total station measurements or drone 
+photogrammetry to establish accurate site coordinates 
+● Floor Plan Digitization: Conversion of architectural drawings to GIS-compatible 
+vector formats (shapefiles, GeoJSON) 
+● Work Zone Definition: Delineation of functional areas based on construction 
+schedule and safety protocols 
+● Camera Coverage Mapping: Documentation of CCTV camera positions, viewing 
+angles, and coverage overlap 
+● Coordinate System Establishment: Definition of local site coordinate system 
+aligned with true north for consistent spatial referencing 
+ 
+ 
+ 
+ 
+The site layout model is developed using QGIS 3.34 (open-source GIS software) with 
+Python 3.10 integration for automated spatial operations. The model incorporates: 
+Spatial Element Data Format Attributes 
+Building Footprint Polygon shapefile Floor count, height, construction phase 
+Work Zones Polygon shapefile Zone type, capacity, hazard level 
+Camera Positions Point shapefile Camera ID, viewing angle, height 
+Access Routes Polyline shapefile Route type, width, safety status 
+5.2.3 GIS Integration Justification 
+The justification for GIS integration in multi-storey construction safety monitoring is 
+established through three analytical perspectives: 
+• Spatial Context Enhancement: Traditional computer vision provides object 
+detection without spatial awareness. GIS integration enables: (a) identification of 
+unauthorized workers in restricted zones, (b) proximity analysis to hazards (open 
+edges, heavy equipment, material stockpiles), (c) emergency evacuation path 
+optimization based on current worker locations 
+ 
+• Multi-Floor Disambiguation: In multi-storey sites, single-camera views often 
+capture workers on multiple floors. GIS integration resolves: (a) floor-level 
+assignment of detected workers based on camera viewing geometry, (b) 
+separate density calculations for each floor to prevent overcrowding, (c) floor-
+specific risk assessments aligned with construction activities 
+ 
+• Temporal-Spatial Analytics: GIS enables advanced spatial analytics not 
+possible with vision systems alone: (a) worker movement pattern analysis to 
+identify unsafe behaviors, (b) time-based occupancy heatmaps revealing peak 
+congestion periods, (c) spatial clustering to detect unplanned worker gatherings 
+that may indicate hazards 
+This justification is supported by literature review of GIS applications in construction 
+management and comparative analysis with conventional 2D monitoring approaches, 
+demonstrating measurable improvements in spatial safety awareness. 
+5.3 First Review Deliverables 
+The first review culminates in the following deliverables: 
+Deliverable Description Format 
+Trained YOLOv8n 
+Model 
+Model weights file with training logs 
+and convergence plots .pt file + PDF report 
+Real-Time 
+Detection Video 
+Annotated footage demonstrating 
+model performance MP4, 5 hours duration 
+Limitations 
+Analysis 
+Quantified performance gaps with 
+video examples PDF technical report 
+GIS Conceptual 
+Framework 
+Theoretical GIS integration approach 
+with diagrams PDF documentation 
+Site Layout Model Digitized construction site with work 
+zones 
+QGIS project + 
+shapefiles 
+6. Second Review Methodology 
+The second review phase advances the project through comparative model evaluation 
+and substantial GIS integration. This phase focuses on identifying the optimal computer 
+vision architecture and developing functional spatial risk mapping capabilities. 
+6.1 Phase A: Comparative Study & Occlusion Enhancement 
+6.1.1 Multi-Model Training & Evaluation 
+Three state-of-the-art computer vision architectures are trained and systematically 
+compared to identify the model best suited for construction safety monitoring: 
+• YOLOv8n (You Only Look Once v8 nano): Object detection network optimized 
+for real-time inference. Architecture: Nano variant with 3.2M parameters, 
+CSPDarknet backbone, PANet neck, detection head with anchor-free approach. 
+Training on construction dataset using identical hyperparameters as First Review 
+phase. 
+ 
+• SAMURAI (Segment Anything Model for Unified Real-time Action and 
+Instance segmentation): State-of-the-art video segmentation model. 
+Architecture: Transformer-based with temporal attention mechanisms, memory-
+efficient design for video processing. Expected advantage: Improved 
+segmentation of partially occluded workers through temporal context. Training 
+procedure: Fine-tuning SAM-2 base model on construction video sequences with 
+5-frame temporal windows. 
+ 
+ 
+• YOLACT++ (You Only Look At CoefficienTs++): Real-time instance 
+segmentation network. Architecture: ResNet-101 backbone with Feature Pyramid 
+Network (FPN), parallel prediction branches for masks and detection. Expected 
+advantage: Pixel-level segmentation enabling precise boundary detection in 
+crowded scenes. Training approach: End-to-end training on construction images 
+with instance mask annotations. 
+ 
+ 
+6.1.2 Comparative Evaluation Framework 
+The three models are evaluated across multiple dimensions relevant to construction 
+safety applications: 
+1. Detection Accuracy Metrics 
+• Mean Average Precision (mAP): mAP@0.5 (IoU threshold 0.5) and 
+mAP@0.5:0.95 (IoU range from 0.5 to 0.95) 
+• Precision: Ratio of correct detections to all detections (minimize false alarms) 
+• Recall: Ratio of detected workers to all actual workers (minimize missed 
+detections - safety critical) 
+• F1-Score: Harmonic mean of precision and recall, providing balanced 
+performance measure 
+2. Inference Performance Metrics 
+• Frames Per Second (FPS): Processing speed on target hardware (RTX 4050), 
+minimum threshold of 10 FPS required for real-time monitoring 
+• GPU Memory Utilization: Peak VRAM consumption during inference, critical for 
+multi-camera deployment 
+• Latency: End-to-end detection latency from frame capture to result output 
+3. Scenario-Specific Performance 
+Models are tested under four realistic construction site scenarios (500 test frames 
+each): 
+Scenario Conditions Evaluation 
+Weight 
+S1: Normal Clear visibility, good lighting, low 
+worker density 20% (baseline) 
+S2: Dusty Dust haze, reduced visibility during 
+excavation/demolition 25% (common) 
+S3: Low-Light Dawn/dusk periods, heavy shadows 25% (critical 
+times) 
+S4: Crowded ≥5 workers per frame, high occlusion 30% (safety 
+critical) 
+ 
+ 
+ 
+4. Occlusion Handling Capability 
+Special focus is placed on evaluating each model's ability to detect partially occluded 
+workers, a critical limitation identified in the first review. Occlusion severity is 
+categorized as: 
+• Mild Occlusion: 25-50% of worker body obscured, head or torso visible 
+• Moderate Occlusion: 50-75% obscured, only head or limbs visible 
+• Severe Occlusion: >75% obscured, minimal body parts visible 
+Detection rates are calculated separately for each occlusion category to quantify model 
+robustness. Manual annotation of 200 frames with occlusion severity labels provides 
+ground truth for this analysis. 
+ 
+3.1.3 Model Selection & Occlusion Mechanism Integration 
+The best-performing model is selected using a weighted scoring approach that 
+prioritizes safety-critical scenarios: 
+• Total Score = 0.20×(S1_mAP) + 0.25×(S2_mAP) + 0.25×(S3_mAP) + 
+0.30×(S4_mAP) 
+• Minimum FPS requirement: Models achieving <10 FPS are disqualified 
+regardless of accuracy 
+• Recall priority: In tie scenarios, higher recall model is selected to minimize 
+missed detections 
+Following model selection, occlusion-handling mechanisms are integrated to address 
+identified limitations. Three enhancement strategies are explored: 
+● Temporal Consistency Tracking: Implement multi-frame tracking using 
+DeepSORT or ByteTrack algorithms. When a worker becomes occluded, their 
+trajectory is predicted based on previous frames, maintaining detection continuity 
+during temporary occlusions up to 2 seconds. 
+● Multi-Camera Fusion: For regions covered by multiple cameras, combine 
+detections from different viewpoints to resolve occlusions. A worker occluded in 
+one view may be fully visible in another. Camera fusion algorithm: weighted 
+averaging of detection confidence scores from overlapping coverage areas. 
+● Occlusion-Aware Training: Augment training dataset with synthetically 
+occluded images (randomly overlaying construction elements: beams, columns, 
+equipment) to improve model robustness. Training augmentation: 30% of training 
+images include synthetic occlusions with varying severity levels. 
+The most effective enhancement strategy (or combination) is determined through 
+ablation studies comparing detection performance before and after each intervention on 
+the 500-frame crowded scenario test set. 
+ 
+ 
+6.2 Phase B: GIS-Based Heatmap Generation (75% Completion) 
+6.2.1 AI-GIS Integration Architecture 
+The integration of AI detection outputs with GIS spatial analysis follows a systematic 
+data pipeline: 
+● Detection Data Collection: AI model generates detection results (bounding box 
+coordinates, class labels, confidence scores) for each processed frame 
+● Camera-to-World Coordinate Transformation: Convert 2D image coordinates 
+(pixels) to 3D world coordinates (meters) using camera calibration parameters: 
+intrinsic matrix (focal length, principal point), extrinsic matrix (rotation, translation 
+relative to site origin), lens distortion coefficients 
+● Floor-Level Assignment: Determine which floor each detected worker occupies 
+using: vertical position in image frame, camera viewing angle geometry, 
+comparison with known floor elevations from site model 
+● Spatial Database Population: Store transformed coordinates in PostGIS 
+(PostgreSQL with spatial extensions) database with schema: worker_detections 
+(detection_id, timestamp, x_coord, y_coord, floor_level, class_label, confidence, 
+camera_id) 
+● Real-Time GIS Update: Stream detection data to QGIS via PostgreSQL 
+connection, update point layers every 2 seconds with latest worker positions 
+6.2.2 Worker Density Heatmap Generation 
+Density heatmaps visualize worker concentration across the construction site, 
+identifying areas of high occupancy that may pose safety risks. The heatmap generation 
+methodology consists of: 
+• Spatial Discretization: Divide construction site into 2×2 meter grid cells, 
+each cell representing a distinct spatial analysis unit 
+• Temporal Aggregation: Aggregate worker positions over sliding 5-minute 
+time windows to capture short-term occupancy patterns while filtering 
+transient detections 
+• Density Calculation: For each grid cell, compute worker density as: Density 
+= (Number of detections in cell during time window) / (Cell area in m² × 
+Time window in minutes). Units: workers per m² per minute 
+• Kernel Density Estimation: Apply Gaussian kernel smoothing to raw 
+density values to produce continuous heatmap surface. Bandwidth 
+parameter: 5 meters (approximately 2× grid cell size) for smooth 
+interpolation between cells 
+• Color Mapping: Map density values to color gradient: Green (0-0.1 
+workers/m²/min) → Yellow (0.1-0.3) → Orange (0.3-0.5) → Red (>0.5 
+workers/m²/min). Thresholds based on OSHA workspace density 
+recommendations 
+ 
+6.2.3 Risk-Based Heatmap Generation 
+Risk heatmaps integrate multiple safety factors beyond worker density to provide 
+comprehensive spatial risk assessment. Risk calculation methodology: 
+• Multi-Factor Risk Model: Combine four risk components with weighted 
+aggregation: Risk_Score = 0.35×Density_Factor + 0.30×PPE_Factor + 
+0.20×Hazard_Proximity_Factor + 0.15×Movement_Factor 
+Component Definitions: 
+• Density_Factor: Normalized worker density (0-1 scale) relative to maximum safe 
+capacity for work zone type 
+• PPE_Factor: Proportion of detected workers without required PPE (helmets, 
+safety vests). Higher values indicate elevated risk 
+• Hazard_Proximity_Factor: Distance-weighted score based on proximity to 
+predefined hazard zones (open edges, heavy equipment, excavations). Inverse 
+distance weighting with 5-meter influence radius 
+• Movement_Factor: Standard deviation of worker positions over time window, 
+indicating high-activity areas where accidents are more likely 
+ 
+6.2.4 GIS Functionality Implementation (75% Target) 
+By the second review, approximately 75% of core GIS functionality is implemented and 
+operational: 
+Completed Functionality (Target: 75%) 
+• Real-time worker position display on site map (10%) 
+• Density heatmap generation with 5-minute time windows (20%) 
+• Risk heatmap calculation incorporating density and PPE compliance (20%) 
+• Multi-floor support with separate heatmaps per floor (10%) 
+• Basic alert system for exceeding density/risk thresholds (10%) 
+• Historical playback of worker positions and heatmaps (5%) 
+Remaining Functionality (To be completed in Third Review - 25%) 
+• Advanced alert logic with zone-specific protocols (10%) 
+• Integration with emergency response systems (5%) 
+• Mobile dashboard for site supervisors (5%) 
+• Performance optimization for multi-camera scaling (5%) 
+The 75% completion milestone ensures that core spatial analysis capabilities are 
+functional and can be demonstrated during the second review, while allowing 
+refinement and optimization in the final phase. 
+ 
+ 
+6.3 Second Review Deliverables 
+The second review produces the following deliverables: 
+Deliverable Description Format 
+Comparative 
+Analysis Report 
+YOLOv8n vs. SAMURAI vs. 
+YOLACT++ performance across all 
+scenarios with charts and statistical 
+analysis 
+PDF technical report 
+(30-40 pages) 
+Selected Model 
+Weights 
+Best-performing model with 
+occlusion enhancements integrated 
+.pt or .pth file + 
+configuration 
+Occlusion Analysis Quantified improvement in detection 
+rates for occluded workers 
+PDF with before/after 
+comparisons 
+Functional GIS 
+Application 
+QGIS project with density and risk 
+heatmaps, 75% feature complete 
+QGIS project + Python 
+scripts 
+Integration 
+Demonstration 
+Video showcasing AI detections 
+mapped to GIS heatmaps in real-
+time 
+MP4, 10-15 minutes 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+7. Third Review Methodology 
+The third and final review phase completes the BuildSight system by deploying the 
+occlusion-aware AI model for real-time monitoring and finalizing GIS integration into a 
+unified production-ready application. This phase emphasizes system optimization, user 
+interface development, and comprehensive validation for industry deployment. 
+7.1 Phase A: Real-Time Occlusion-Aware AI Deployment 
+7.1.1 Production Environment Configuration 
+The selected AI model (with occlusion enhancements from Second Review) is 
+optimized for production deployment on construction site hardware: 
+• Model Optimization: Conversion to ONNX (Open Neural Network Exchange) 
+format for cross-platform compatibility. Quantization to INT8 precision (8-
+bit integers) to reduce model size by ~75% and increase inference speed by 
+~2-3×, with minimal accuracy loss (<2% mAP degradation). TensorRT 
+optimization for NVIDIA GPUs, achieving maximum throughput on RTX 
+hardware. 
+• Multi-Camera Processing: Parallel inference pipeline for simultaneous 
+processing of 4-6 CCTV camera feeds. Implementation using Python 
+multiprocessing with dedicated GPU stream per camera. Frame buffering to 
+prevent dropped frames during processing spikes. 
+• Hardware Configuration: Deployment server specifications: Intel i7 12th 
+gen CPU (16 threads), NVIDIA RTX 4050 GPU (6GB VRAM), 32GB DDR5 
+RAM, 512GB NVMe SSD. Network: Gigabit Ethernet for RTSP camera 
+streams, low-latency network switch (<5ms latency). 
+7.1.2 Crowded Environment Optimization 
+Specific optimizations target performance in crowded multi-storey construction 
+scenarios (>5 workers per frame), the most challenging condition identified in first two 
+reviews: 
+1. Adaptive NMS Thresholding: Standard Non-Maximum Suppression (NMS) 
+is adjusted dynamically based on detected worker count. Low density (<3 
+workers): NMS threshold = 0.45 (standard). Medium density (3-7 workers): 
+NMS threshold = 0.35 (more permissive, retain overlapping detections). 
+High density (>7 workers): NMS threshold = 0.25 (most permissive, critical 
+to avoid missed detections). 
+2. Crowd Density Pre-Filtering: Before processing each frame, compute 
+crowd density estimate using fast background subtraction. If density 
+exceeds threshold, trigger specialized processing: reduced inference 
+resolution for speed (480×480 instead of 640×640), increased confidence 
+threshold to 0.6 (filter low-confidence false positives common in crowds), 
+enable temporal tracking to link detections across frames. 
+3. Multi-Scale Detection: Implement image pyramid processing for frames 
+with high worker density. Original image processed at 640×640 (standard), 
+downsampled image at 480×480 (captures distant/small workers), 
+upsampled crops at 800×800 for dense regions (improves small object 
+detection). Detections from all scales merged using Weighted Boxes 
+Fusion (WBF) algorithm. 
+7.1.3 Multi-Storey Floor Disambiguation 
+For multi-storey construction sites where single camera views capture multiple floors, 
+accurate floor assignment is critical for correct spatial risk mapping. Floor 
+disambiguation methodology: 
+• Vertical Axis Calibration: For each camera, establish vertical calibration by 
+identifying known reference points on each floor (e.g., floor slabs, window 
+ledges). Create vertical coordinate lookup table mapping pixel row (Y-
+coordinate) to floor level. 
+• Bounding Box Centroid Analysis: Extract Y-coordinate of worker bounding 
+box centroid (bottom center point, as it represents foot position closest to 
+floor). Match centroid Y-coordinate to calibration table to determine floor 
+level with confidence score. 
+• Multi-Frame Validation: Track worker across 5 consecutive frames (2-
+second window at 2 FPS processing rate). If floor assignment fluctuates 
+(worker appears to jump between floors), apply majority voting to assign 
+most frequent floor level. Flag detections with inconsistent floor 
+assignments for manual review. 
+• Confidence Thresholding: Only assign floor level if confidence >0.7. 
+Detections with confidence <0.7 are marked as 'ambiguous floor' and 
+excluded from floor-specific GIS layers but included in overall site-wide 
+heatmaps. 
+7.1.4 Real-Time Performance Validation 
+The deployed system undergoes rigorous real-time performance validation over 7 
+consecutive days (168 hours) of continuous operation on an active construction site: 
+Metric Target Measurement Method 
+Inference FPS 
+≥10 FPS per 
+camera 
+Log processing timestamps for 10,000 
+frames, compute mean FPS 
+Detection Recall 
+≥85% (crowded), 
+≥90% (normal) 
+Manual annotation of 500 random 
+frames, compute recall 
+System Uptime 
+≥99% (no more 
+than 1.7 hours 
+Monitor process status every minute, log 
+failures 
+downtime per 
+week) 
+End-to-End 
+Latency 
+<500ms (frame 
+capture to GIS 
+update) 
+Timestamp: camera capture, AI 
+processing, GIS update, compute delta 
+GPU Memory 
+Usage 
+<5GB (allow 
+headroom for 
+future cameras) 
+Monitor nvidia-smi GPU memory every 
+10 seconds, log peak usage 
+False Positive Rate <5% of all 
+detections 
+Manual review of 1,000 random 
+detections, classify true/false positive 
+If any target metric is not achieved, root cause analysis is performed and corrective 
+optimizations implemented (e.g., model quantization adjustment, batch size tuning, 
+NMS threshold calibration). 
+7.2 Phase B: Complete GIS Integration & Application Development 
+7.2.1 GIS Heatmap Finalization (Remaining 25%) 
+The remaining 25% of GIS functionality from Second Review is completed and 
+integrated: 
+• Advanced Alert System: Zone-specific alert protocols configured based on 
+work zone type and construction phase. Example: Excavation zone alert 
+triggered if density >0.3 workers/m² AND >30% workers without helmets. 
+Formwork zone alert if unauthorized entry detected (no workers scheduled 
+per construction plan). Alert delivery: push notifications to site supervisor 
+mobile app, SMS for critical alerts, visual/audio alarms at site office. 
+• Emergency Response Integration: GIS system interfaces with emergency 
+evacuation plan. In case of emergency alarm, system automatically: 
+identifies all current worker locations, calculates optimal evacuation routes 
+to nearest safe assembly points, displays escape route overlays on GIS 
+map, tracks worker movement toward assembly points to identify 
+stragglers. 
+• Mobile Dashboard: Lightweight mobile application (Android/iOS) for site 
+supervisors developed using Flutter framework. Features: live worker 
+position map with real-time updates, current density and risk heatmaps, 
+alert notification panel with acknowledgment, historical playback of past 24 
+hours, ability to manually mark hazard zones. 
+• Multi-Camera Scaling Optimization: Database query optimization using 
+spatial indexing (R-tree indexes on PostGIS). Caching layer (Redis) for 
+frequently accessed data (last 5 minutes of detections). Load balancing for 
+multiple simultaneous dashboard users. 
+7.2.2 Unified Application Architecture 
+The complete BuildSight system integrates AI detection and GIS analysis into a unified 
+software architecture: 
+• Backend Services: AI Inference Service: Python FastAPI REST API serving 
+AI model predictions. Accepts RTSP camera streams or video files, returns 
+JSON detection results (bounding boxes, class labels, confidence scores). 
+Scales horizontally with Docker containers for multi-camera support. GIS 
+Processing Service: Python Flask application managing PostGIS database 
+and QGIS integration. Receives detection data from AI service, performs 
+coordinate transformation and floor assignment, updates spatial database 
+and triggers heatmap regeneration. Alert Engine: Node.js service 
+monitoring spatial database for alert conditions, sends notifications via 
+Firebase Cloud Messaging (FCM) for mobile app. 
+• Frontend Applications: Web Dashboard: React-based web application for 
+desktop monitoring at site office. Real-time map display using Leaflet.js 
+library, interactive heatmap layers with opacity controls, tabular view of 
+recent alerts and detections, configuration panel for alert thresholds and 
+work zones. Mobile Dashboard: Flutter-based mobile app (Android & iOS) 
+with simplified interface optimized for field use by supervisors. QGIS 
+Desktop Client: Advanced GIS analysis interface for safety engineers, 
+supports complex spatial queries and custom report generation. 
+• Communication Layer: Message broker using RabbitMQ for asynchronous 
+communication between services. AI service publishes detection events to 
+'detections' queue, GIS service subscribes to process and map detections, 
+Alert engine subscribes to 'alerts' queue for notification delivery. Ensures 
+reliable message delivery even during temporary service outages 
+(persistent queues). 
+7.2.3 User Interface Design 
+The user interface is designed for intuitive operation by construction site personnel with 
+minimal technical training: 
+• Main Dashboard Layout: Left panel: Site map view with worker positions 
+and heatmap overlay, zoom/pan controls, floor selector for multi-storey 
+sites. Center panel: Live camera feeds (4-6 streams) with bounding box 
+overlays, click camera to expand to full-screen view. Right panel: Alert 
+notification feed (color-coded: red=critical, yellow=warning, green=info), 
+alert acknowledgment buttons, current site statistics (total workers, PPE 
+compliance rate, active alerts). 
+• Heatmap Controls: Toggle buttons to switch between density heatmap and 
+risk heatmap, opacity slider (0-100%) to adjust heatmap transparency over 
+site map, time window selector (1 min, 5 min, 15 min, 1 hour) to adjust 
+temporal aggregation, legend showing color scale with numerical ranges. 
+• Historical Playback: Timeline scrubber to select past date/time, playback 
+controls (play, pause, speed adjustment 1×, 2×, 5×, 10×), export function to 
+save playback as video file for incident analysis, annotation tools to mark 
+specific events or observations. 
+7.2.4 End-to-End System Demonstration 
+The third review culminates in a comprehensive system demonstration validating 
+complete functionality: 
+• Live Deployment Demonstration: Deploy system on active construction site 
+with 4 CCTV cameras covering different zones (excavation, formwork, 
+concrete pour, circulation paths). Run system continuously for 48 hours, 
+demonstrating: real-time worker detection with <500ms latency, accurate 
+heatmap generation and updates every 5 minutes, alert triggering for 
+simulated safety violations (workers entering restricted zone, high-density 
+alert in formwork area), mobile dashboard functionality accessed by site 
+supervisor. 
+• Crowded Scenario Test: Stage controlled crowded scenario with 10-12 
+workers in single camera view (simulating concrete pour activity). 
+Demonstrate: all workers detected without missing detections (recall 
+>90%), bounding boxes accurately positioned despite partial occlusions, 
+correct floor assignment for workers on visible multiple floors, risk 
+heatmap correctly identifies high-density region with elevated risk score. 
+• Multi-Storey Floor Validation: Configure camera view capturing two floors 
+simultaneously (ground and first floor). Position 2 workers on ground floor 
+and 3 workers on first floor. Validate: GIS displays separate point layers for 
+each floor, density heatmaps generated independently per floor, floor 
+assignment stability across 30-second observation period (no false floor 
+changes). 
+• System Performance Validation: Record system metrics during 48-hour 
+deployment: inference FPS, GPU memory usage, database query response 
+times, end-to-end latency. Generate performance report comparing 
+achieved metrics against targets from Section 4.1.4. Document any 
+performance bottlenecks and mitigation strategies. 
+The demonstration is recorded as video documentation (30-45 minutes) with narrated 
+explanation of each functional component, included in final deliverables. 
+ 
+ 
+ 
+ 
+ 
+7.3 Third Review Deliverables 
+The final review delivers the complete BuildSight system ready for industry deployment: 
+Deliverable Description Format 
+Production AI 
+Model 
+Optimized occlusion-aware model 
+with TensorRT/ONNX export .engine/.onnx + weights 
+Complete GIS 
+Application 
+Fully integrated system with all 
+heatmap functionality (100%) 
+QGIS project + SQL 
+schema 
+Web Dashboard React-based monitoring interface 
+with real-time updates 
+Deployed web app + 
+source code 
+Mobile Application Flutter mobile dashboard for Android 
+& iOS 
+APK/IPA installers + 
+source 
+System 
+Documentation 
+Installation guide, user manual, API 
+documentation, maintenance 
+procedures 
+PDF (100+ pages) + 
+HTML docs 
+Deployment Video Full system demonstration with live 
+construction site footage MP4, 30-45 minutes 
+Performance 
+Report 
+7-day validation results with metrics 
+and analysis PDF technical report 
+Source Code 
+Repository 
+Complete codebase with version 
+control history 
+Git repository 
+(GitHub/GitLab) 
+ 
+ 
+ 
+ 
+ 
+8. Conclusion 
+This methodology document provides a comprehensive roadmap for the development and 
+deployment of BuildSight, an integrated AI-powered construction safety monitoring system with 
+GIS-based spatial risk analysis. The project addresses critical challenges in construction site 
+safety through systematic application of computer vision technology and geographic information 
+systems. 
+8.1 Key Methodological Contributions 
+The methodology presented in this document contributes to construction safety research 
+through several novel approaches: 
+•        Dual-Track Parallel Execution: Simultaneous advancement of AI model 
+development (Phase A) and GIS spatial analysis (Phase B) across all three 
+review cycles ensures cohesive integration and prevents sequential 
+dependency bottlenecks. 
+•        Scenario-Based Evaluation Framework: Systematic testing under four realistic 
+construction conditions (normal, dusty, low-light, crowded) with weighted 
+scoring prioritizing safety-critical scenarios provides robust model validation 
+beyond standard benchmark metrics. 
+•        Multi-Factor Spatial Risk Model: Integration of worker density, PPE 
+compliance, hazard proximity, and movement patterns into unified risk 
+heatmaps offers comprehensive spatial safety assessment beyond traditional 
+density-only approaches. 
+•        Multi-Storey Floor Disambiguation: Explicit methodology for assigning 
+detected workers to correct floor levels in multi-storey sites addresses a 
+significant gap in existing construction monitoring systems. 
+•        Production-Ready System Design: Emphasis on real-time performance (≥10 FPS), 
+system reliability (99% uptime), and practical deployment considerations ensures 
+research outcomes translate to industry-deployable solutions. 
+8.2 Expected Research Outcomes 
+Upon successful completion of all three review phases, the BuildSight project is expected to 
+achieve: 
+35. Technical Outcomes: State-of-the-art computer vision model optimized for 
+construction safety with >85% recall in crowded scenarios, Functional GIS-
+based spatial risk mapping system with real-time heatmap generation, 
+Complete software system (web + mobile dashboards, backend services, alert 
+engine) suitable for commercial deployment 
+36. Academic Outcomes: Comprehensive comparative analysis of YOLOv8n, SAMURAI, 
+and YOLACT++ for construction safety applications, Novel occlusion-handling 
+mechanisms demonstrating ≥5% recall improvement in crowded scenarios, 
+Validated integration methodology for AI detection outputs with GIS spatial analysis, 
+Publication-worthy research findings suitable for construction engineering and 
+computer vision journals 
+37. Industry Impact: Proof-of-concept deployment on real construction site 
+demonstrating feasibility of AI+GIS safety monitoring, Quantified performance 
+metrics (99% uptime, <500ms latency, >90% detection accuracy) proving 
+production readiness, Transferable methodology applicable to diverse 
+construction projects (residential, commercial, infrastructure) 
+8.3 Scalability & Future Extensions 
+While this methodology focuses on a G+1 residential construction project, the system 
+architecture is designed for scalability and extensibility: 
+•        Camera Scaling: Multi-camera processing pipeline supports 4-12 
+simultaneous camera streams with minimal performance degradation through 
+GPU stream parallelization and efficient data pipelining. 
+•        Site Scaling: GIS framework accommodates sites of varying complexity (from 
+single-storey to high-rise buildings) through flexible coordinate system 
+definition and hierarchical floor modeling. 
+•        Detection Class Extension: Current methodology focuses on worker + PPE 
+detection but can be extended to detect additional safety hazards: equipment 
+violations (e.g., scaffolding without guardrails), unsafe behaviors (e.g., 
+workers not using harnesses at height), material stockpile hazards (e.g., 
+improperly secured loads). 
+•        Advanced Analytics: Temporal-spatial analytics layer can be added for: 
+Predictive accident risk modeling based on historical patterns, Worker 
+productivity analysis from movement patterns, Construction progress 
+monitoring aligned with BIM schedules. 
+8.4 Conclusion Remarks 
+The BuildSight methodology represents a rigorous, academically sound approach to developing 
+an integrated construction safety monitoring system. By combining cutting-edge computer vision 
+technology with geographic information systems, the project addresses fundamental limitations 
+of conventional safety monitoring approaches that lack spatial awareness and struggle with 
+occlusion challenges in complex multi-storey environments. 
+The systematic three-phase execution strategy ensures incremental progress with clear 
+milestones and success criteria at each stage. The emphasis on real-world validation, 
+production-ready implementation, and industry deployment distinguishes this research from 
+purely theoretical academic work, positioning BuildSight as a practical solution to pressing 
+construction safety challenges. 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+End of Methodology Document 
+ 

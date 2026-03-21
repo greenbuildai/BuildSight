@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jovi — BuildSight GeoAI Presenter</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <!-- ─── TOP BAR ─────────────────────────────────────────────── -->
+    <header class="topbar">
+        <div class="topbar-left">
+            <span class="logo-icon">◈</span>
+            <span class="logo-text">JOVI</span>
+            <span class="logo-sep">·</span>
+            <span class="logo-sub">BuildSight GeoAI</span>
+        </div>
+        <div class="topbar-right">
+            <span class="status-dot"></span>
+            <span class="status-text">NEURAL LINK ACTIVE</span>
+        </div>
+    </header>
+
+    <!-- ─── MAIN STAGE ──────────────────────────────────────────── -->
+    <main class="stage">
+        <!-- LEFT: Slide Visual Area -->
+        <section class="slide-panel">
+            <div class="slide-header">
+                <span class="slide-label" id="slideLabel">SLIDE 1 OF 4</span>
+                <h1 class="slide-title" id="slideTitle">Introducing Jovi — The GeoAI Engine</h1>
+            </div>
+            <div class="slide-visual" id="slideVisual">
+                <!-- SVG or image injected here -->
+                <div class="placeholder-visual" id="placeholderVisual">
+                    <div class="hex-grid">
+                        <div class="hex"></div><div class="hex"></div><div class="hex"></div>
+                        <div class="hex"></div><div class="hex accent"></div><div class="hex"></div>
+                        <div class="hex"></div><div class="hex"></div><div class="hex"></div>
+                    </div>
+                    <p class="visual-caption" id="visualCaption">GeoAI Module — Initializing...</p>
+                </div>
+            </div>
+            <div class="slide-controls">
+                <button class="btn btn-ghost" id="btnPrev" disabled>← Previous</button>
+                <button class="btn btn-primary" id="btnNext">Begin Presentation ▶</button>
+            </div>
+        </section>
+
+        <!-- RIGHT: Jovi Panel -->
+        <aside class="jovi-panel">
+            <!-- Avatar + Voice Indicator -->
+            <div class="jovi-avatar-section">
+                <div class="avatar-ring" id="avatarRing">
+                    <div class="avatar-inner">
+                        <span class="avatar-letter">J</span>
+                    </div>
+                    <div class="voice-ring ring1"></div>
+                    <div class="voice-ring ring2"></div>
+                    <div class="voice-ring ring3"></div>
+                </div>
+                <div class="avatar-info">
+                    <span class="avatar-name">JOVI</span>
+                    <span class="avatar-role">GeoAI Engine · v1.1</span>
+                </div>
+            </div>
+
+            <!-- Narration transcript -->
+            <div class="narration-box" id="narrationBox">
+                <div class="narration-placeholder">
+                    <p>Press <strong>Begin Presentation</strong> to start.</p>
+                    <p class="dim">Jovi will introduce himself and narrate each slide.</p>
+                </div>
+            </div>
+
+            <!-- Q&A Section -->
+            <div class="qa-section">
+                <div class="qa-history" id="qaHistory"></div>
+                <form class="qa-form" id="qaForm">
+                    <input type="text" class="qa-input" id="qaInput" placeholder="Ask Jovi a question..." autocomplete="off" />
+                    <button type="submit" class="btn btn-accent" id="btnAsk">ASK</button>
+                </form>
+            </div>
+        </aside>
+    </main>
+
+    <!-- Hidden audio player -->
+    <audio id="audioPlayer"></audio>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>

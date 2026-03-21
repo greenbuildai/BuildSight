@@ -1,0 +1,26 @@
+<View>
+  <Header value="BuildSight Safety-Focused Labeling Interface (Protocol v1.0)"/>
+  <Image name="image" value="$image"/>
+  
+  <!-- Class IDs mapped to Protocol -->
+  <RectangleLabels name="label" toName="image">
+    <Label value="Person" background="#00FF00" alias="0" />
+    <Label value="Helmet" background="#FF0000" alias="1" />
+    <Label value="Vest" background="#FFFF00" alias="2" />
+  </RectangleLabels>
+
+  <!-- Scenario Metadata Tracking -->
+  <Choices name="scenario" toName="image" showInList="true">
+    <Choice value="S1-Normal" alias="S1"/>
+    <Choice value="S2-Dusty" alias="S2"/>
+    <Choice value="S3-Low-Light" alias="S3"/>
+    <Choice value="S4-Crowded" alias="S4"/>
+  </Choices>
+  
+  <Header value="MANDATORY PROTOCOL CHECK"/>
+  <Checkboxes name="compliance" toName="image">
+    <Choice value="All Visible Workers Annotated (Min 5 for S4)"/>
+    <Choice value="Helmet/Vest separate from Person box"/>
+    <Choice value="No Merged Overlapping Boxes"/>
+  </Checkboxes>
+</View>

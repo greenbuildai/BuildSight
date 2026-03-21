@@ -1,0 +1,21 @@
+# GPU-Accelerated Image Classification Dependencies
+# For RTX 4050 Notebook GPU with CUDA 12.1
+
+# Core ML Framework (already installed via ultralytics)
+torch==2.5.1+cu121
+torchvision==0.20.1+cu121
+
+# CLIP Dependencies (NEW - install with: pip install openai-clip ftfy regex)
+openai-clip==1.0.1        # Official OpenAI CLIP implementation
+ftfy==6.3.1               # Text normalization for CLIP
+regex==2024.11.6          # Pattern matching for CLIP
+
+# Image Processing (already installed)
+pillow==11.3.0
+numpy>=1.24.0
+
+# Utilities (already installed)
+tqdm>=4.65.0
+
+# Optional: For hybrid mode (already installed)
+google-genai>=0.2.0       # Gemini API SDK for fallback verification
