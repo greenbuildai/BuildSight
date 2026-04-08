@@ -131,7 +131,7 @@ html, body {
 h1, h2, h3, h4, .display-font {
   margin: 0;
   font-family: var(--font-display);
-  font-weight: 550;
+  font-weight: 600;
   color: var(--color-text-strong);
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -141,7 +141,7 @@ h1, h2, h3, h4, .display-font {
   font-size: var(--fs-xs);
   color: var(--color-accent);
   letter-spacing: 0.15em;
-  font-weight: 550;
+  font-weight: 600;
   font-family: var(--font-display);
   display: block;
   margin-bottom: 0.15rem;
@@ -149,14 +149,44 @@ h1, h2, h3, h4, .display-font {
 }
 
 .sidebar {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
   gap: 1.5rem;
   padding: 1.25rem;
+  height: 100vh;
+  box-sizing: border-box;
   background:
     linear-gradient(180deg, var(--accent-a06) 0%, transparent 22%),
     var(--color-surface-strong);
   border-right: 1px solid var(--color-border);
+}
+
+.sidebar__content {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  overflow-y: auto;
+  margin: 0 -0.5rem; /* Offset for better scrollbar spacing */
+  padding: 0 0.5rem;
+  scrollbar-width: thin;
+  scrollbar-color: var(--accent-a20) transparent;
+}
+
+.sidebar__content::-webkit-scrollbar {
+  width: 5px;
+}
+
+.sidebar__content::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.sidebar__content::-webkit-scrollbar-thumb {
+  background: var(--accent-a20);
+  border-radius: 10px;
+}
+
+.sidebar__content::-webkit-scrollbar-thumb:hover {
+  background: var(--color-accent);
 }
 
 .sidebar__brand,
@@ -220,7 +250,7 @@ h1, h2, h3, h4, .display-font {
 .alert-log h4 {
   margin: 0;
   font-family: var(--font-display);
-  font-weight: 550;
+  font-weight: 600;
   color: var(--color-text-strong);
   line-height: var(--lh-snug);
 }
@@ -267,7 +297,7 @@ h1, h2, h3, h4, .display-font {
   color: var(--color-text);
   font-family: var(--font-display);
   font-size: var(--fs-sm);
-  font-weight: 550;
+  font-weight: 600;
   text-decoration: none;
   text-transform: uppercase;
   letter-spacing: 0.03em;
@@ -309,6 +339,9 @@ h1, h2, h3, h4, .display-font {
   color: var(--color-text);
   font-size: var(--fs-base);
   line-height: var(--lh-relaxed);
+  background: var(--color-surface-strong);
+  position: relative;
+  z-index: 10;
 }
 
 /* ── Dashboard main area ────────────────────────────────────────────────────── */
@@ -343,7 +376,7 @@ h1, h2, h3, h4, .display-font {
   font-size: var(--fs-lg);
   text-transform: uppercase;
   letter-spacing: var(--ls-wide);
-  font-weight: 550;
+  font-weight: 600;
   color: var(--color-text-strong);
 }
 
@@ -365,7 +398,7 @@ h1, h2, h3, h4, .display-font {
   padding: 0.5rem 0.9rem;
   font-family: var(--font-display);
   font-size: 0.72rem;
-  font-weight: 550;
+  font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.1em;
   border: none;
@@ -436,7 +469,7 @@ h1, h2, h3, h4, .display-font {
   grid-template-columns: minmax(0, 1.5fr) minmax(18rem, 0.85fr);
 }
 
-.hero-grid__main,
+.hero-grid__left-column { display: flex; flex-direction: column; }
 .hero-grid__side,
 .trend-panel,
 .lower-grid > .panel {
@@ -464,7 +497,7 @@ h1, h2, h3, h4, .display-font {
   font-size: var(--fs-lg);
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  font-weight: 550;
+  font-weight: 600;
   font-family: var(--font-display);
 }
 
@@ -743,7 +776,7 @@ h1, h2, h3, h4, .display-font {
   margin-top: 0.9rem;
   color: var(--color-text-strong);
   font-family: var(--font-display);
-  font-weight: 550;
+  font-weight: 600;
   font-size: var(--fs-hero);
   line-height: var(--lh-tight);
   letter-spacing: var(--ls-tight);
@@ -824,6 +857,10 @@ h1, h2, h3, h4, .display-font {
 }
 
 /* ── Lower grid (trends + alerts) ───────────────────────────────────────────── */
+
+.lower-grid {
+  margin-top: 1rem;
+}
 
 .lower-grid > .panel {
   padding-bottom: 1.2rem;
@@ -1046,7 +1083,7 @@ h1, h2, h3, h4, .display-font {
   color: var(--color-text-strong);
   font-family: var(--font-display);
   font-size: var(--fs-lg);
-  font-weight: 550;
+  font-weight: 600;
   letter-spacing: var(--ls-normal);
   line-height: var(--lh-snug);
   text-transform: uppercase;
@@ -1108,7 +1145,7 @@ h1, h2, h3, h4, .display-font {
   padding: 0.8rem 1.4rem;
   border-radius: 4px;
   font-size: var(--fs-xs);
-  font-weight: 550;
+  font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.12em;
   cursor: pointer;
@@ -1627,7 +1664,7 @@ h1, h2, h3, h4, .display-font {
   font-size: var(--fs-xs);
   color: var(--color-text-muted);
   text-transform: uppercase;
-  font-weight: 550;
+  font-weight: 600;
   letter-spacing: 0.04em;
 }
 
@@ -1904,7 +1941,7 @@ h1, h2, h3, h4, .display-font {
 .stg-section-title {
   margin: 1.25rem 0 0.25rem;
   font-family: var(--font-display);
-  font-weight: 550;
+  font-weight: 600;
   font-size: var(--fs-md);
   color: var(--color-text-strong);
   text-transform: uppercase;
@@ -2572,7 +2609,6 @@ h1, h2, h3, h4, .display-font {
 .dashboard__content {
   display: flex;
   flex-direction: column;
-  gap: 1rem;
   padding: 1rem;
   overflow-y: auto;
   height: calc(100vh - 60px);
@@ -2769,7 +2805,7 @@ h1, h2, h3, h4, .display-font {
   text-transform: uppercase;
   color: var(--onyx-text-muted);
   letter-spacing: 0.1em;
-  font-weight: 550;
+  font-weight: 600;
 }
 
 .summary-callout strong {
@@ -2798,7 +2834,7 @@ h1, h2, h3, h4, .display-font {
   font-size: var(--fs-xs);
   text-transform: uppercase;
   color: var(--onyx-text-muted);
-  font-weight: 550;
+  font-weight: 600;
   letter-spacing: 0.05em;
 }
 
@@ -3521,7 +3557,7 @@ h1, h2, h3, h4, .display-font {
   font-family: var(--font-display);
   font-size: 0.62rem;
   letter-spacing: 0.18em;
-  font-weight: 550;
+  font-weight: 600;
   margin-bottom: 0.1rem;
   text-transform: uppercase;
 }
@@ -3531,7 +3567,7 @@ h1, h2, h3, h4, .display-font {
   letter-spacing: 0.06em;
   color: var(--color-text-strong);
   margin: 0;
-  font-weight: 550;
+  font-weight: 600;
   font-family: var(--font-display);
 }
 
@@ -3550,7 +3586,7 @@ h1, h2, h3, h4, .display-font {
   gap: 0.5rem;
   font-family: var(--font-display);
   font-size: 0.68rem;
-  font-weight: 550;
+  font-weight: 600;
   letter-spacing: 0.10em;
   text-transform: uppercase;
   color: var(--color-text-strong);
@@ -3600,41 +3636,42 @@ h1, h2, h3, h4, .display-font {
    ══════════════════════════════════════════════════════════════════════════════ */
 
 [data-theme="light"] {
-  /* ── Core Palette ────────────────────────────────────────────────────────── */
-  --color-bg:             #eef0f2;
-  --color-surface:        #f8f9fa;
+  /* ── Core Palette (Premium Light Mode) ──────────────────────────────────── */
+  --color-bg:             #eaecf0;
+  --color-surface:        #f4f5f7;
   --color-surface-strong: #ffffff;
-  --color-overlay:        rgba(220, 225, 230, 0.92);
+  --color-overlay:        rgba(220, 225, 230, 0.94);
 
-  /* ── Borders ─────────────────────────────────────────────────────────────── */
-  --color-border:         rgba(0, 0, 0, 0.10);
-  --color-border-strong:  rgba(0, 0, 0, 0.18);
+  /* ── Borders (stronger contrast for bright backgrounds) ─────────────────── */
+  --color-border:         rgba(0, 0, 0, 0.14);
+  --color-border-strong:  rgba(0, 0, 0, 0.26);
+  --color-border-glow:    color-mix(in srgb, var(--color-accent) 28%, transparent);
 
   /* ── Text ────────────────────────────────────────────────────────────────── */
-  --color-text:           #3c4550;
-  --color-text-muted:     #7a8594;
-  --color-text-strong:    #0d1014;
-  --color-text-dim:       #9aa3af;
-  --color-text-accent:    color-mix(in srgb, var(--color-accent) 80%, #600);
+  --color-text:           #2d3540;
+  --color-text-muted:     #667080;
+  --color-text-strong:    #0a0d11;
+  --color-text-dim:       #8a95a3;
+  --color-text-accent:    color-mix(in srgb, var(--color-accent) 85%, #400);
 
   /* ── Accent bar variants (lighter background for bars) ───────────────────── */
   --accent-bar-dark:      color-mix(in srgb, var(--color-accent) 55%, #fff8f0);
   --accent-bar-light:     color-mix(in srgb, var(--color-accent) 95%, #ffffff);
 
   /* ── Turner / Onyx aliases ───────────────────────────────────────────────── */
-  --onyx-black:           #eef0f2;
-  --onyx-surface:         #f8f9fa;
+  --onyx-black:           #eaecf0;
+  --onyx-surface:         #f4f5f7;
   --onyx-surface-strong:  #ffffff;
-  --onyx-border:          rgba(0, 0, 0, 0.10);
-  --onyx-text:            #0d1014;
-  --onyx-text-muted:      #7a8594;
+  --onyx-border:          rgba(0, 0, 0, 0.14);
+  --onyx-text:            #0a0d11;
+  --onyx-text-muted:      #667080;
 
-  --turner-bg:            #f0f2f4;
-  --turner-surface:       #f8f9fa;
+  --turner-bg:            #eceff2;
+  --turner-surface:       #f4f5f7;
   --turner-surface-strong: #ffffff;
-  --turner-border:        rgba(0, 0, 0, 0.10);
-  --turner-text:          #0d1014;
-  --turner-text-muted:    #7a8594;
+  --turner-border:        rgba(0, 0, 0, 0.14);
+  --turner-text:          #0a0d11;
+  --turner-text-muted:    #667080;
 }
 
 /* ── Light mode: body background & text ──────────────────────────────────────── */
@@ -3648,14 +3685,26 @@ h1, h2, h3, h4, .display-font {
 /* ── Light mode: panel base ──────────────────────────────────────────────────── */
 [data-theme="light"] .panel {
   background: var(--color-surface);
-  border-color: var(--color-border);
-  box-shadow: 0 2px 16px -2px rgba(0, 0, 0, 0.10), inset 0 1px 0 rgba(255,255,255,0.80);
+  border-color: var(--color-border-strong);
+  box-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.06),
+    0 4px 16px -2px rgba(0, 0, 0, 0.10),
+    0 8px 32px -4px rgba(0, 0, 0, 0.05),
+    inset 0 1px 0 rgba(255,255,255,0.90);
+}
+
+/* Suppress dark-mode grid overlay on bright surfaces */
+[data-theme="light"] .panel::after {
+  opacity: 0;
 }
 
 /* ── Light mode: sidebar ─────────────────────────────────────────────────────── */
 [data-theme="light"] .sidebar {
-  background: var(--color-surface-strong);
-  border-right: 1px solid var(--color-border);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--color-accent) 4%, transparent) 0%, transparent 18%),
+    var(--color-surface-strong);
+  border-right: 1px solid var(--color-border-strong);
+  box-shadow: 2px 0 12px rgba(0, 0, 0, 0.04);
 }
 
 [data-theme="light"] .sidebar__nav-gradient {
@@ -3738,8 +3787,11 @@ h1, h2, h3, h4, .display-font {
 /* ── Light mode: metric cards ────────────────────────────────────────────────── */
 [data-theme="light"] .metric-card {
   background: var(--color-surface-strong);
-  border-color: var(--color-border);
-  box-shadow: 0 1px 8px rgba(0,0,0,0.07);
+  border-color: var(--color-border-strong);
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.05),
+    0 4px 12px -2px rgba(0, 0, 0, 0.08),
+    inset 0 1px 0 rgba(255,255,255,0.95);
 }
 
 [data-theme="light"] .metric-card__value {
@@ -3821,10 +3873,23 @@ h1, h2, h3, h4, .display-font {
 
 [data-theme="light"] .alert-item {
   border-bottom-color: var(--color-border);
+  border-left: 3px solid transparent;
+  padding-left: 0.6rem;
+  background: rgba(0,0,0,0.01);
+}
+
+[data-theme="light"] .alert-item--critical {
+  border-left-color: var(--status-critical);
+  background: rgba(255, 59, 48, 0.03);
+}
+
+[data-theme="light"] .alert-item--warning {
+  border-left-color: var(--status-warning);
+  background: rgba(255, 212, 0, 0.04);
 }
 
 [data-theme="light"] .alert-item:hover {
-  background: rgba(0,0,0,0.03);
+  background: rgba(0,0,0,0.04);
 }
 
 [data-theme="light"] .alert-item__msg {
@@ -4009,4 +4074,485 @@ h1, h2, h3, h4, .display-font {
 
 [data-theme="light"] ::-webkit-scrollbar-thumb:hover {
   background: rgba(0,0,0,0.28);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   ANALYTICS PAGE
+   ══════════════════════════════════════════════════════════════════════════════ */
+
+.analytics-section,
+.geoai-section {
+  padding: 1rem 1.5rem;
+  overflow-y: auto;
+  max-height: calc(100vh - 4.5rem);
+}
+
+.analytics-page__header,
+.geoai-page__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.analytics-page__status,
+.geoai-page__status {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.analytics-data-pill,
+.geoai-status-pill {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xxs);
+  letter-spacing: 0.12em;
+  padding: 0.3rem 0.8rem;
+  border-radius: var(--radius-md);
+  background: var(--color-surface-strong);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+}
+
+.analytics-data-pill--live {
+  color: var(--status-ok);
+  border-color: color-mix(in srgb, var(--status-ok) 30%, transparent);
+}
+
+.analytics-data-pill--demo {
+  color: var(--color-text-dim);
+}
+
+.analytics-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+.analytics-panel {
+  padding: 1rem 1.25rem;
+}
+
+/* ── Compliance Drift Chart ──────────────────────────────────────────────── */
+
+.analytics-chart-legend {
+  display: flex;
+  gap: 1.25rem;
+  padding: 0.5rem 0;
+  margin-bottom: 0.25rem;
+}
+
+.analytics-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: var(--fs-xxs);
+  font-family: var(--font-mono);
+  color: var(--color-text-muted);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.analytics-legend-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}
+
+.analytics-legend-swatch--helmet { background: var(--status-ok); }
+.analytics-legend-swatch--vest   { background: var(--color-accent); }
+
+.compliance-chart {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-end;
+  height: 180px;
+  padding-top: 0.5rem;
+}
+
+.compliance-chart__day {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.compliance-chart__bars {
+  display: flex;
+  gap: 3px;
+  align-items: flex-end;
+  width: 100%;
+  height: 150px;
+}
+
+.analytics-bar {
+  flex: 1;
+  border-radius: 3px 3px 0 0;
+  min-height: 2px;
+}
+
+.compliance-chart__label {
+  font-size: var(--fs-xxs);
+  font-family: var(--font-mono);
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+/* ── Radar Chart ─────────────────────────────────────────────────────────── */
+
+.radar-chart {
+  width: 100%;
+  max-width: 240px;
+  margin: 0.5rem auto;
+}
+
+.radar-label {
+  font-size: 7px;
+  fill: var(--color-text-muted);
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* ── Zone Risk Table ─────────────────────────────────────────────────────── */
+
+.zone-risk-table {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-top: 0.75rem;
+}
+
+.zone-risk-row {
+  display: grid;
+  grid-template-columns: 6rem 1fr 2.5rem;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.zone-risk-name {
+  font-size: var(--fs-xxs);
+  font-family: var(--font-mono);
+  color: var(--color-text);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.zone-risk-bar-track {
+  height: 6px;
+  background: var(--color-surface);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.zone-risk-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+}
+
+.zone-risk-score {
+  font-size: var(--fs-xxs);
+  font-family: var(--font-mono);
+  color: var(--color-text-muted);
+  text-align: right;
+}
+
+/* ── Session Summary Grid ────────────────────────────────────────────────── */
+
+.session-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.session-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0.6rem 0.75rem;
+  background: var(--accent-a04);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.session-stat--critical { border-left: 3px solid var(--status-critical); }
+.session-stat--warning  { border-left: 3px solid var(--status-warning); }
+.session-stat--alert    { border-left: 3px solid var(--status-neutral); }
+
+.session-stat__label {
+  font-size: var(--fs-xxs);
+  font-family: var(--font-mono);
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.session-stat__value {
+  font-size: var(--fs-sm);
+  font-family: var(--font-data);
+  color: var(--color-text-strong);
+  font-weight: 600;
+}
+
+/* ── Violation Breakdown ─────────────────────────────────────────────────── */
+
+.violation-total {
+  font-size: var(--fs-xxs);
+  font-family: var(--font-mono);
+  color: var(--color-text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.violation-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+}
+
+.violation-row {
+  display: grid;
+  grid-template-columns: 5rem 1fr 2rem;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.violation-label {
+  font-size: var(--fs-xxs);
+  font-family: var(--font-mono);
+  color: var(--color-text);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.violation-bar-track {
+  height: 8px;
+  background: var(--color-surface);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.violation-bar-fill {
+  height: 100%;
+  border-radius: 4px;
+}
+
+.violation-count {
+  font-size: var(--fs-xs);
+  font-family: var(--font-data);
+  color: var(--color-text-strong);
+  text-align: right;
+  font-weight: 600;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   GEOAI PAGE
+   ══════════════════════════════════════════════════════════════════════════════ */
+
+.geoai-upload-btn {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xxs);
+  letter-spacing: 0.08em;
+  padding: 0.4rem 1rem;
+  border-radius: var(--radius-md);
+  background: var(--color-accent);
+  color: #ffffff;
+  border: none;
+  cursor: pointer;
+  text-transform: uppercase;
+  font-weight: 600;
+  transition: opacity 150ms ease;
+}
+
+.geoai-upload-btn:hover {
+  opacity: 0.85;
+}
+
+/* ── Map Canvas Placeholder ──────────────────────────────────────────────── */
+
+.geoai-map-canvas {
+  position: relative;
+  min-height: 260px;
+  margin-bottom: 1rem;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.geoai-map-placeholder {
+  position: relative;
+  width: 100%;
+  height: 260px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.geoai-map-grid {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  grid-template-rows: repeat(10, 1fr);
+  gap: 2px;
+  padding: 1rem;
+}
+
+.geoai-grid-dot {
+  width: 100%;
+  height: 100%;
+  background: var(--color-accent);
+  border-radius: 1px;
+  opacity: 0.08;
+}
+
+.geoai-map-overlay-text {
+  position: relative;
+  z-index: 1;
+  text-align: center;
+  color: var(--color-text-muted);
+}
+
+.geoai-map-icon {
+  font-size: 2.5rem;
+  display: block;
+  margin-bottom: 0.5rem;
+}
+
+.geoai-map-overlay-text h4 {
+  color: var(--color-text-strong);
+  margin-bottom: 0.25rem;
+}
+
+.geoai-map-overlay-text p {
+  font-size: var(--fs-xs);
+  margin: 0.15rem 0;
+}
+
+.geoai-map-hint {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xxs) !important;
+  letter-spacing: 0.06em;
+  color: var(--color-text-dim) !important;
+}
+
+/* ── Module Cards Grid ───────────────────────────────────────────────────── */
+
+.geoai-modules-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.75rem;
+}
+
+.geoai-module-card {
+  padding: 1rem 1.15rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.geoai-module-card__header {
+  display: flex;
+  gap: 0.65rem;
+  align-items: flex-start;
+}
+
+.geoai-module-icon {
+  font-size: 1.4rem;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.geoai-module-card__header h4 {
+  margin-bottom: 0.05rem;
+  font-size: var(--fs-sm);
+}
+
+.geoai-module-subtitle {
+  font-size: var(--fs-xxs);
+  font-family: var(--font-mono);
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.geoai-module-desc {
+  font-size: var(--fs-xs);
+  color: var(--color-text);
+  line-height: var(--lh-relaxed);
+  margin: 0;
+}
+
+.geoai-module-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: auto;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--color-border);
+}
+
+.geoai-endpoint {
+  font-size: var(--fs-xxs);
+  font-family: var(--font-mono);
+  color: var(--color-text-dim);
+  letter-spacing: 0.04em;
+}
+
+.geoai-module-status {
+  font-size: var(--fs-xxs);
+  font-family: var(--font-mono);
+  color: var(--color-accent);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+/* ── Responsive: Analytics & GeoAI ───────────────────────────────────────── */
+
+@media (max-width: 1200px) {
+  .analytics-grid { grid-template-columns: 1fr; }
+  .geoai-modules-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (max-width: 768px) {
+  .geoai-modules-grid { grid-template-columns: 1fr; }
+  .session-grid { grid-template-columns: 1fr; }
+}
+
+/* ── Light mode: Analytics & GeoAI ───────────────────────────────────────── */
+
+[data-theme="light"] .analytics-bar {
+  box-shadow: inset 0 -1px 0 rgba(0,0,0,0.05);
+}
+
+[data-theme="light"] .session-stat {
+  background: rgba(0,0,0,0.02);
+  border-color: var(--color-border-strong);
+}
+
+[data-theme="light"] .zone-risk-bar-track,
+[data-theme="light"] .violation-bar-track {
+  background: rgba(0,0,0,0.06);
+}
+
+[data-theme="light"] .geoai-grid-dot {
+  background: var(--color-accent);
+  opacity: 0.06;
+}
+
+[data-theme="light"] .geoai-map-canvas {
+  background: var(--color-surface);
+}
+
+[data-theme="light"] .geoai-module-card {
+  background: var(--color-surface-strong);
 }

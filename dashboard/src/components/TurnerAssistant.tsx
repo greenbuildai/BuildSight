@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { motion, AnimatePresence } from 'framer-motion'
 import { useDetectionStats } from '../DetectionStatsContext'
 import { useSettings } from '../SettingsContext'
 
@@ -244,58 +245,78 @@ export const TurnerAssistant: React.FC<{ isHero?: boolean }> = ({ isHero = false
 
   const renderConversation = () => (
     <div className="turner-assistant__messages" ref={scrollRef}>
-      {messages.map((message) => (
-        <article key={message.id} className={`chat-bubble chat-bubble--${message.role}`}>
-          <div className="chat-bubble__avatar" aria-hidden="true">
-            {message.role === 'assistant' ? 'TR' : 'YO'}
-          </div>
-          <div className="chat-bubble__body">
-            <div className="chat-bubble__meta">
-              <strong>{message.role === 'assistant' ? 'Turner' : 'Operator'}</strong>
-              <span>{formatTime(message.timestamp)}</span>
+      <AnimatePresence initial={false}>
+        {messages.map((message) => (
+          <motion.article 
+            key={message.id} 
+            className={`chat-bubble chat-bubble--${message.role}`}
+            initial={{ opacity: 0, scale: 0.95, y: 10 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+          >
+            <div className="chat-bubble__avatar" aria-hidden="true">
+              {message.role === 'assistant' ? 'TR' : 'YO'}
             </div>
-            <div className="chat-bubble__content">
-              {renderMessageContent(message.content)}
-            </div>
-          </div>
-        </article>
-      ))}
-
-      {isTyping && (
-        <article className="chat-bubble chat-bubble--assistant chat-bubble--thinking">
-          <div className="chat-bubble__avatar" aria-hidden="true">TR</div>
-          <div className="chat-bubble__body">
-            <div className="chat-bubble__meta">
-              <strong>Turner</strong>
-              <span>Analyzing live telemetry</span>
-            </div>
-            <div className="turner-thinking">
-              <div className="turner-thinking__pulse" aria-hidden="true" />
-              <div>
-                <strong>Turner is thinking...</strong>
-                <p>Cross-checking PPE compliance, escalations, and live site conditions.</p>
+            <div className="chat-bubble__body">
+              <div className="chat-bubble__meta">
+                <strong>{message.role === 'assistant' ? 'Turner' : 'Operator'}</strong>
+                <span>{formatTime(message.timestamp)}</span>
+              </div>
+              <div className="chat-bubble__content">
+                {renderMessageContent(message.content)}
               </div>
             </div>
-          </div>
-        </article>
-      )}
+          </motion.article>
+        ))}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {isTyping && (
+          <motion.article 
+            className="chat-bubble chat-bubble--assistant chat-bubble--thinking"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }}
+          >
+            <div className="chat-bubble__avatar" aria-hidden="true">TR</div>
+            <div className="chat-bubble__body">
+              <div className="chat-bubble__meta">
+                <strong>Turner</strong>
+                <span>Analyzing live telemetry</span>
+              </div>
+              <div className="turner-thinking">
+                <div className="turner-thinking__pulse" aria-hidden="true" />
+                <div>
+                  <strong>Turner is thinking...</strong>
+                  <p>Cross-checking PPE compliance, escalations, and live site conditions.</p>
+                </div>
+              </div>
+            </div>
+          </motion.article>
+        )}
+      </AnimatePresence>
     </div>
   )
 
   const renderComposer = () => (
     <div className="turner-assistant__footer">
       <div className="turner-assistant__chips">
-        {QUICK_ACTIONS.map((action) => (
-          <button
+        {QUICK_ACTIONS.map((action, idx) => (
+          <motion.button
             key={action.label}
             type="button"
             className="turner-chip"
             onClick={() => void handleSend(action.query)}
             disabled={isTyping}
+            initial={{ opacity: 0, y: 5 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 + idx * 0.03 }}
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
           >
             <span className="turner-chip__dot" aria-hidden="true" />
             {action.label}
-          </button>
+          </motion.button>
         ))}
       </div>
 
@@ -393,8 +414,20 @@ export const TurnerAssistant: React.FC<{ isHero?: boolean }> = ({ isHero = false
   const modal = isExpanded && typeof document !== 'undefined'
     ? createPortal(
         <div className="turner-modal" role="dialog" aria-modal="true" aria-label="Turner full review">
-          <div className="turner-modal__backdrop" onClick={() => setIsExpanded(false)} />
-          <div className="turner-modal__surface">
+          <motion.div 
+            className="turner-modal__backdrop" 
+            onClick={() => setIsExpanded(false)}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          />
+          <motion.div 
+            className="turner-modal__surface"
+            initial={{ opacity: 0, scale: 0.95, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95, y: 20 }}
+            transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+          >
             <header className="turner-modal__header">
               <div>
                 <p className="section-label">Expanded Review</p>
@@ -460,16 +493,16 @@ export const TurnerAssistant: React.FC<{ isHero?: boolean }> = ({ isHero = false
                 {renderPanel(true)}
               </div>
             </div>
-          </div>
+          </motion.div>
         </div>,
         document.body,
       )
     : null
 
   return (
-    <>
+    <AnimatePresence>
       {renderPanel()}
       {modal}
-    </>
+    </AnimatePresence>
   )
 }

@@ -37,6 +37,8 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from starlette.background import BackgroundTask
+import database
+from geoai import geoai_router
 
 try:
     import google.generativeai as genai
@@ -139,6 +141,12 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Initialize database
+database.init_db()
+
+# Include GeoAI router
+app.include_router(geoai_router, prefix="/api/geoai", tags=["geoai"])
 
 # ── Turner AI Configuration ──────────────────────────────────────────────────
 logger = logging.getLogger("buildsight")
@@ -1257,6 +1265,15 @@ async def detect_image(
     for d in det_list:
         class_counts[d["class"]] = class_counts.get(d["class"], 0) + 1
 
+    # Log metrics to DB
+    database.log_metrics(
+        worker_count=class_counts.get("worker", 0),
+        helmet_count=class_counts.get("helmet", 0),
+        vest_count=class_counts.get("safety_vest", 0) or class_counts.get("safety-vest", 0),
+        compliance_score=round(sum(1 for d in detections if d.get("has_helmet") and d.get("has_vest")) / max(class_counts.get("worker", 1), 1) * 100, 1),
+        condition=condition
+    )
+
     return {
         "detections":   det_list,
         "class_counts": class_counts,
@@ -1304,6 +1321,19 @@ async def detect_frame(
 
     det_list   = _build_det_list(detections)
     elapsed_ms = round((time.perf_counter() - t0) * 1000)
+
+    # Log metrics for analytics
+    class_counts = {}
+    for d in det_list:
+        class_counts[d["class"]] = class_counts.get(d["class"], 0) + 1
+    
+    database.log_metrics(
+        worker_count=class_counts.get("worker", 0),
+        helmet_count=class_counts.get("helmet", 0),
+        vest_count=class_counts.get("safety_vest", 0) or class_counts.get("safety-vest", 0),
+        compliance_score=round(sum(1 for d in detections if d.get("has_helmet") and d.get("has_vest")) / max(class_counts.get("worker", 1), 1) * 100, 1),
+        condition=condition
+    )
 
     return {
         "detections": det_list,
@@ -1579,6 +1609,40 @@ async def ai_chat_stream(req: ChatRequest):
             "Access-Control-Allow-Origin": "*",
         },
     )
+
+
+
+# ── Configuration & Sync Endpoints ───────────────────────────────────────────
+
+@app.get("/api/settings/threshold")
+async def get_threshold():
+    return {"threshold": PRE_CONF}
+
+@app.post("/api/settings/threshold")
+async def update_threshold(req: dict):
+    global PRE_CONF
+    new_val = req.get("threshold")
+    if new_val is not None:
+        PRE_CONF = float(new_val)
+        logger.info("Updated PRE_CONF threshold to: %s", PRE_CONF)
+        return {"status": "success", "threshold": PRE_CONF}
+    return JSONResponse(status_code=400, content={"error": "Missing threshold value"})
+
+# ── Analytics Endpoints ──────────────────────────────────────────────────────
+
+@app.get("/api/analytics/summary")
+async def get_compliance_summary(days: int = 7):
+    data = database.get_analytics_summary(days)
+    return {"summary": data}
+
+@app.get("/api/analytics/history")
+async def get_detection_history(limit: int = 100):
+    conn = database.get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM metrics ORDER BY timestamp DESC LIMIT ?", (limit,))
+    rows = cursor.fetchall()
+    conn.close()
+    return {"history": [dict(r) for r in rows]}
 
 
 if __name__ == "__main__":

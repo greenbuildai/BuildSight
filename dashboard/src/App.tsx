@@ -8,6 +8,9 @@ import { SettingsPanel } from './components/SettingsPanel'
 import { SettingsProvider, useSettings } from './SettingsContext'
 import { DetectionStatsProvider, useDetectionStats } from './DetectionStatsContext'
 import { TurnerAssistant } from './components/TurnerAssistant'
+import { AnalyticsPage } from './components/AnalyticsPage'
+import { GeoAIPage } from './components/GeoAIPage'
+import { PageTransition, AnimatedBar } from './components/AnimatedLayout'
 
 /* Static fallback metrics — replaced by live data when detection is running */
 const STATIC_METRICS = [
@@ -89,7 +92,7 @@ const trendBars = [
   { label: 'Sun', value: 90 },
 ]
 
-type View = 'dashboard' | 'settings'
+type View = 'dashboard' | 'settings' | 'analytics' | 'geoai'
 type DashboardMode = 'LIVE' | 'VIDEO' | 'IMAGE'
 
 function formatIstSnapshot() {
@@ -264,72 +267,91 @@ function AppInner() {
           </div>
         </div>
 
-        <div className="sidebar__section">
-          <p className="section-label">Site Matrix</p>
-          <button className="site-chip site-chip--active">CHN-042 / Metro Core</button>
-          <button className="site-chip">BLR-019 / South Yard</button>
-          <button className="site-chip">HYD-011 / Precast Plant</button>
-        </div>
-
-        <nav className="sidebar__section" aria-label="Primary">
-          <p className="section-label">Control Stack</p>
-          <button
-            className={`nav-link ${view === 'dashboard' ? 'nav-link--active' : ''}`}
-            onClick={() => {
-              setView('dashboard')
-              setDashboardMode('LIVE')
-            }}
-          >
-            Live Surveillance
-          </button>
-          <a className={`nav-link ${view === 'dashboard' ? '' : 'nav-link--dim'}`} href="#metrics" onClick={() => setView('dashboard')}>
-            Compliance Metrics
-          </a>
-          <a className={`nav-link ${view === 'dashboard' ? '' : 'nav-link--dim'}`} href="#history" onClick={() => setView('dashboard')}>
-            Historical Drift
-          </a>
-          <a className={`nav-link ${view === 'dashboard' ? '' : 'nav-link--dim'}`} href="#alerts" onClick={() => setView('dashboard')}>
-            Alert Escalation
-          </a>
-        </nav>
-
-        <div className="sidebar__section">
-          <p className="section-label">System</p>
-          <button
-            className={`nav-link nav-link--settings ${view === 'settings' ? 'nav-link--active' : ''}`}
-            onClick={() => setView('settings')}
-          >
-            ⚙ Settings
-          </button>
-        </div>
-
-        {view === 'dashboard' && (
+        <div className="sidebar__content">
           <div className="sidebar__section">
-            <p className="section-label">Detection Threshold</p>
-            <div className="conf-slider">
-              <div className="conf-slider__readout">
-                <span>Min Confidence</span>
-                <strong>{(settings.confidenceThreshold * 100).toFixed(0)}%</strong>
-              </div>
-              <input
-                type="range"
-                className="conf-slider__input"
-                min={0.05}
-                max={0.95}
-                step={0.05}
-                value={settings.confidenceThreshold}
-                style={{ '--val': `${settings.confidenceThreshold * 100}%` } as CSSProperties}
-                onChange={(event) => update('confidenceThreshold', Number(event.target.value))}
-                aria-label="Detection confidence threshold"
-              />
-              <div className="conf-slider__labels">
-                <span>5%</span>
-                <span>Detect All</span>
-                <span>95%</span>
+            <p className="section-label">Site Matrix</p>
+            <button className="site-chip site-chip--active">CHN-042 / Metro Core</button>
+            <button className="site-chip">BLR-019 / South Yard</button>
+            <button className="site-chip">HYD-011 / Precast Plant</button>
+          </div>
+
+          <nav className="sidebar__section" aria-label="Primary">
+            <p className="section-label">Control Stack</p>
+            <button
+              className={`nav-link ${view === 'dashboard' ? 'nav-link--active' : ''}`}
+              onClick={() => {
+                setView('dashboard')
+                setDashboardMode('LIVE')
+              }}
+            >
+              Live Surveillance
+            </button>
+            <a className={`nav-link ${view === 'dashboard' ? '' : 'nav-link--dim'}`} href="#metrics" onClick={() => setView('dashboard')}>
+              Compliance Metrics
+            </a>
+            <a className={`nav-link ${view === 'dashboard' ? '' : 'nav-link--dim'}`} href="#history" onClick={() => setView('dashboard')}>
+              7-Day Performance Drift
+            </a>
+            <a className={`nav-link ${view === 'dashboard' ? '' : 'nav-link--dim'}`} href="#alerts" onClick={() => setView('dashboard')}>
+              Alert Escalation
+            </a>
+          </nav>
+
+          {/* ── Detection Threshold (moved higher for accessibility) ──────── */}
+          {view === 'dashboard' && (
+            <div className="sidebar__section">
+              <p className="section-label">Detection Threshold</p>
+              <div className="conf-slider">
+                <div className="conf-slider__readout">
+                  <span>Min Confidence</span>
+                  <strong>{(settings.confidenceThreshold * 100).toFixed(0)}%</strong>
+                </div>
+                <input
+                  type="range"
+                  className="conf-slider__input"
+                  min={0.05}
+                  max={0.95}
+                  step={0.05}
+                  value={settings.confidenceThreshold}
+                  style={{ '--val': `${settings.confidenceThreshold * 100}%` } as CSSProperties}
+                  onChange={(event) => update('confidenceThreshold', Number(event.target.value))}
+                  aria-label="Detection confidence threshold"
+                />
+                <div className="conf-slider__labels">
+                  <span>5%</span>
+                  <span>Detect All</span>
+                  <span>95%</span>
+                </div>
               </div>
             </div>
+          )}
+
+          <nav className="sidebar__section" aria-label="Intelligence">
+            <p className="section-label">Intelligence</p>
+            <button
+              className={`nav-link ${view === 'analytics' ? 'nav-link--active' : ''}`}
+              onClick={() => setView('analytics')}
+            >
+              📊 Site Intelligence
+            </button>
+            <button
+              className={`nav-link ${view === 'geoai' ? 'nav-link--active' : ''}`}
+              onClick={() => setView('geoai')}
+            >
+              🗺️ GeoAI
+            </button>
+          </nav>
+
+          <div className="sidebar__section">
+            <p className="section-label">System</p>
+            <button
+              className={`nav-link nav-link--settings ${view === 'settings' ? 'nav-link--active' : ''}`}
+              onClick={() => setView('settings')}
+            >
+              ⚙ Settings
+            </button>
           </div>
-        )}
+        </div>
 
         <div className="sidebar__footer">
           <p className="section-label">Ops Notes</p>
@@ -340,7 +362,8 @@ function AppInner() {
         </div>
       </aside>
 
-      {view === 'dashboard' ? (
+      <PageTransition viewKey={view}>
+      {view === 'dashboard' && (
         <main className="dashboard">
           <header className="topbar">
             <div className="topbar__identity">
@@ -381,24 +404,32 @@ function AppInner() {
 
           <section className="dashboard__content">
             <section className="hero-grid">
-              <div
-                className={`hero-grid__main panel ${dashboardMode === 'LIVE' ? 'hero-grid__main--live' : 'hero-grid__main--detect'}`}
-                id="live"
-              >
-                <div className="panel-heading">
-                  <div>
-                    <p className="section-label">{workspace.label}</p>
-                    <h3>{workspace.title}</h3>
+              <div className="hero-grid__left-column">
+                <div
+                  className={`hero-grid__main panel ${dashboardMode === 'LIVE' ? 'hero-grid__main--live' : 'hero-grid__main--detect'}`}
+                  id="live"
+                >
+                  <div className="panel-heading">
+                    <div>
+                      <p className="section-label">{workspace.label}</p>
+                      <h3>{workspace.title}</h3>
+                    </div>
+                    {!summaryCollapsed && <p className="panel-meta">{workspace.meta}</p>}
                   </div>
-                  {!summaryCollapsed && <p className="panel-meta">{workspace.meta}</p>}
+                  <div className="video-viewport">
+                    {dashboardMode === 'LIVE' ? (
+                      <LiveFeed confidenceThreshold={settings.confidenceThreshold} />
+                    ) : (
+                      <DetectionPanel mode={dashboardMode} />
+                    )}
+                  </div>
                 </div>
-                <div className="video-viewport">
-                  {dashboardMode === 'LIVE' ? (
-                    <LiveFeed confidenceThreshold={settings.confidenceThreshold} />
-                  ) : (
-                    <DetectionPanel mode={dashboardMode} />
-                  )}
-                </div>
+
+                <section className="metrics-grid" id="metrics">
+                  {liveMetrics.map((metric, idx) => (
+                    <MetricCard key={metric.label} {...metric} index={idx} />
+                  ))}
+                </section>
               </div>
 
               <aside className="hero-grid__side hero-grid__side--summary">
@@ -406,27 +437,21 @@ function AppInner() {
               </aside>
             </section>
 
-            <section className="metrics-grid" id="metrics">
-              {liveMetrics.map((metric) => (
-                <MetricCard key={metric.label} {...metric} />
-              ))}
-            </section>
-
             <section className="lower-grid">
               <div className="panel trend-panel" id="history">
                 <div className="panel-heading">
                   <div>
-                    <p className="section-label">Historical Performance</p>
-                    <h3>Seven-Day Compliance Recovery</h3>
+                    <p className="section-label">Site Performance Analytics</p>
+                    <h3>7-Day Performance Drift</h3>
                   </div>
                   <p className="panel-meta">Normalized site score based on PPE and unsafe motion events</p>
                 </div>
 
                 <div className="trend-bars" aria-label="Seven day compliance trend">
-                  {trendBars.map((bar) => (
+                  {trendBars.map((bar, idx) => (
                     <div className="trend-bars__item" key={bar.label}>
                       <div className="trend-bars__column">
-                        <span style={{ height: `${bar.value}%` }} />
+                        <AnimatedBar heightPct={bar.value} delay={idx * 0.05} />
                       </div>
                       <strong>{bar.value}</strong>
                       <span>{bar.label}</span>
@@ -441,7 +466,43 @@ function AppInner() {
             </section>
           </section>
         </main>
-      ) : (
+      )}
+
+      {view === 'analytics' && (
+        <main className="dashboard dashboard--analytics">
+          <header className="topbar panel">
+            <div>
+              <p className="eyebrow">Enterprise Intelligence Engine</p>
+              <h2>Site Intelligence</h2>
+            </div>
+            <div className="topbar__status">
+              <button className="stg-back-btn" onClick={() => setView('dashboard')}>← Back to Dashboard</button>
+            </div>
+          </header>
+          <section className="analytics-section">
+            <AnalyticsPage />
+          </section>
+        </main>
+      )}
+
+      {view === 'geoai' && (
+        <main className="dashboard dashboard--geoai">
+          <header className="topbar panel">
+            <div>
+              <p className="eyebrow">Spatial Intelligence</p>
+              <h2>GeoAI</h2>
+            </div>
+            <div className="topbar__status">
+              <button className="stg-back-btn" onClick={() => setView('dashboard')}>← Back to Dashboard</button>
+            </div>
+          </header>
+          <section className="geoai-section">
+            <GeoAIPage />
+          </section>
+        </main>
+      )}
+
+      {view === 'settings' && (
         <main className="dashboard dashboard--settings">
           <header className="topbar panel">
             <div>
@@ -462,6 +523,7 @@ function AppInner() {
           </section>
         </main>
       )}
+      </PageTransition>
     </div>
 )
 }
