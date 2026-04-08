@@ -10,7 +10,7 @@ import { DetectionStatsProvider, useDetectionStats } from './DetectionStatsConte
 import { TurnerAssistant } from './components/TurnerAssistant'
 import { AnalyticsPage } from './components/AnalyticsPage'
 import { GeoAIPage } from './components/GeoAIPage'
-import { PageTransition, AnimatedBar } from './components/AnimatedLayout'
+import { PageTransition } from './components/AnimatedLayout'
 
 /* Static fallback metrics — replaced by live data when detection is running */
 const STATIC_METRICS = [
@@ -23,20 +23,20 @@ const STATIC_METRICS = [
     footnote: '412 workers scanned in the last 30 min',
   },
   {
-    label: 'High-Vis Vest',
-    value: '85.6%',
-    delta: '-2.1%',
-    status: 'risk' as const,
-    progress: 85.6,
-    footnote: 'East scaffold zone trending below threshold',
-  },
-  {
     label: 'Unsafe Proximity',
     value: '03',
     delta: 'LIVE',
     status: 'alert' as const,
     progress: 34,
     footnote: '2 near crane swing radius, 1 vehicle conflict',
+  },
+  {
+    label: 'High-Vis Vest',
+    value: '85.6%',
+    delta: '-2.1%',
+    status: 'risk' as const,
+    progress: 85.6,
+    footnote: 'East scaffold zone trending below threshold',
   },
   {
     label: 'AI Confidence',
@@ -82,15 +82,7 @@ const alerts: AlertItem[] = [
   },
 ]
 
-const trendBars = [
-  { label: 'Mon', value: 78 },
-  { label: 'Tue', value: 82 },
-  { label: 'Wed', value: 80 },
-  { label: 'Thu', value: 88 },
-  { label: 'Fri', value: 92 },
-  { label: 'Sat', value: 84 },
-  { label: 'Sun', value: 90 },
-]
+
 
 type View = 'dashboard' | 'settings' | 'analytics' | 'geoai'
 type DashboardMode = 'LIVE' | 'VIDEO' | 'IMAGE'
@@ -161,20 +153,20 @@ function AppInner() {
         footnote: `${stats.helmetsDetected} helmets / ${workers} workers · ${stats.framesScanned} frames`,
       },
       {
-        label: 'High-Vis Vest',
-        value: `${vestPct.toFixed(1)}%`,
-        delta: stats.isRunning ? 'LIVE' : '+0.0%',
-        status: vestStatus,
-        progress: vestPct,
-        footnote: `${stats.vestsDetected} vests / ${workers} workers · ${stats.framesScanned} frames`,
-      },
-      {
         label: 'Unsafe Proximity',
         value: String(stats.proximityViolations).padStart(2, '0'),
         delta: stats.isRunning ? 'TRACKING' : 'IDLE',
         status: stats.proximityViolations > 0 ? 'alert' : 'stable',
         progress: Math.min(100, stats.proximityViolations * 20),
         footnote: `${stats.proximityViolations} zone violation${stats.proximityViolations !== 1 ? 's' : ''} detected`,
+      },
+      {
+        label: 'High-Vis Vest',
+        value: `${vestPct.toFixed(1)}%%`,
+        delta: stats.isRunning ? 'LIVE' : '+0.0%',
+        status: vestStatus,
+        progress: vestPct,
+        footnote: `${stats.vestsDetected} vests / ${workers} workers · ${stats.framesScanned} frames`,
       },
       {
         label: 'AI Confidence',
@@ -289,8 +281,8 @@ function AppInner() {
             <a className={`nav-link ${view === 'dashboard' ? '' : 'nav-link--dim'}`} href="#metrics" onClick={() => setView('dashboard')}>
               Compliance Metrics
             </a>
-            <a className={`nav-link ${view === 'dashboard' ? '' : 'nav-link--dim'}`} href="#history" onClick={() => setView('dashboard')}>
-              7-Day Performance Drift
+            <a className={`nav-link ${view === 'dashboard' ? '' : 'nav-link--dim'}`} href="#ai-supervisor" onClick={() => setView('dashboard')}>
+              AI Supervisor Terminal
             </a>
             <a className={`nav-link ${view === 'dashboard' ? '' : 'nav-link--dim'}`} href="#alerts" onClick={() => setView('dashboard')}>
               Alert Escalation
@@ -348,17 +340,19 @@ function AppInner() {
               className={`nav-link nav-link--settings ${view === 'settings' ? 'nav-link--active' : ''}`}
               onClick={() => setView('settings')}
             >
-              ⚙ Settings
+              God Mode
             </button>
           </div>
         </div>
 
         <div className="sidebar__footer">
-          <p className="section-label">Ops Notes</p>
-          <p>
-            Shift handover at <strong>18:00</strong>. Scaffold remediation team dispatched to east
-            elevation.
-          </p>
+          <p className="section-label">System Access</p>
+          <button
+            className={`nav-link nav-link--settings ${view === 'settings' ? 'nav-link--active' : ''}`}
+            onClick={() => setView('settings')}
+          >
+            ⚙ Settings
+          </button>
         </div>
       </aside>
 
@@ -404,60 +398,41 @@ function AppInner() {
 
           <section className="dashboard__content">
             <section className="hero-grid">
-              <div className="hero-grid__left-column">
-                <div
-                  className={`hero-grid__main panel ${dashboardMode === 'LIVE' ? 'hero-grid__main--live' : 'hero-grid__main--detect'}`}
-                  id="live"
-                >
-                  <div className="panel-heading">
-                    <div>
-                      <p className="section-label">{workspace.label}</p>
-                      <h3>{workspace.title}</h3>
-                    </div>
-                    {!summaryCollapsed && <p className="panel-meta">{workspace.meta}</p>}
+              <div className="hero-grid__main panel" id="live">
+                <div className="panel-heading">
+                  <div>
+                    <p className="section-label">{workspace.label}</p>
+                    <h3>{workspace.title}</h3>
                   </div>
-                  <div className="video-viewport">
-                    {dashboardMode === 'LIVE' ? (
-                      <LiveFeed confidenceThreshold={settings.confidenceThreshold} />
-                    ) : (
-                      <DetectionPanel mode={dashboardMode} />
-                    )}
+                  {!summaryCollapsed && <p className="panel-meta">{workspace.meta}</p>}
+                </div>
+                <div className="video-viewport">
+                  {dashboardMode === 'LIVE' ? (
+                    <LiveFeed confidenceThreshold={settings.confidenceThreshold} />
+                  ) : (
+                    <DetectionPanel mode={dashboardMode} />
+                  )}
+                </div>
+              </div>
+
+              <aside className="hero-grid__side hero-grid__side--metrics panel">
+                <div className="panel-heading">
+                  <div>
+                    <p className="section-label">Real-Time Indicators</p>
+                    <h3>Compliance Metrics</h3>
                   </div>
                 </div>
-
-                <section className="metrics-grid" id="metrics">
+                <section className="metrics-vertical-stack">
                   {liveMetrics.map((metric, idx) => (
                     <MetricCard key={metric.label} {...metric} index={idx} />
                   ))}
                 </section>
-              </div>
-
-              <aside className="hero-grid__side hero-grid__side--summary">
-                <TurnerAssistant isHero />
               </aside>
             </section>
 
             <section className="lower-grid">
-              <div className="panel trend-panel" id="history">
-                <div className="panel-heading">
-                  <div>
-                    <p className="section-label">Site Performance Analytics</p>
-                    <h3>7-Day Performance Drift</h3>
-                  </div>
-                  <p className="panel-meta">Normalized site score based on PPE and unsafe motion events</p>
-                </div>
-
-                <div className="trend-bars" aria-label="Seven day compliance trend">
-                  {trendBars.map((bar, idx) => (
-                    <div className="trend-bars__item" key={bar.label}>
-                      <div className="trend-bars__column">
-                        <AnimatedBar heightPct={bar.value} delay={idx * 0.05} />
-                      </div>
-                      <strong>{bar.value}</strong>
-                      <span>{bar.label}</span>
-                    </div>
-                  ))}
-                </div>
+              <div className="panel terminal-panel" id="ai-supervisor">
+                <TurnerAssistant onOpenSettings={() => setView('settings')} />
               </div>
 
               <div className="panel" id="alerts">
@@ -470,13 +445,20 @@ function AppInner() {
 
       {view === 'analytics' && (
         <main className="dashboard dashboard--analytics">
-          <header className="topbar panel">
-            <div>
+          <header className="topbar">
+            <div className="topbar__brand">
               <p className="eyebrow">Enterprise Intelligence Engine</p>
               <h2>Site Intelligence</h2>
             </div>
             <div className="topbar__status">
-              <button className="stg-back-btn" onClick={() => setView('dashboard')}>← Back to Dashboard</button>
+              <div className="telemetry-block">
+                <span>Data Sync</span>
+                <strong>LIVE</strong>
+              </div>
+              <button className="stg-back-btn" onClick={() => setView('dashboard')}>
+                <span className="stg-back-btn__icon">←</span>
+                <span>Back to Dashboard</span>
+              </button>
             </div>
           </header>
           <section className="analytics-section">
@@ -487,13 +469,20 @@ function AppInner() {
 
       {view === 'geoai' && (
         <main className="dashboard dashboard--geoai">
-          <header className="topbar panel">
-            <div>
+          <header className="topbar">
+            <div className="topbar__brand">
               <p className="eyebrow">Spatial Intelligence</p>
-              <h2>GeoAI</h2>
+              <h2>GeoAI Engine</h2>
             </div>
             <div className="topbar__status">
-              <button className="stg-back-btn" onClick={() => setView('dashboard')}>← Back to Dashboard</button>
+              <div className="telemetry-block">
+                <span>Spatial Sync</span>
+                <strong>CONNECTED</strong>
+              </div>
+              <button className="stg-back-btn" onClick={() => setView('dashboard')}>
+                <span className="stg-back-btn__icon">←</span>
+                <span>Back to Dashboard</span>
+              </button>
             </div>
           </header>
           <section className="geoai-section">
@@ -504,18 +493,22 @@ function AppInner() {
 
       {view === 'settings' && (
         <main className="dashboard dashboard--settings">
-          <header className="topbar panel">
-            <div>
+          <header className="topbar">
+            <div className="topbar__brand">
               <p className="eyebrow">System Configuration</p>
-              <h2>Settings</h2>
+              <h2>Terminal Settings</h2>
             </div>
             <div className="topbar__status">
-              <button
-                className="stg-back-btn"
-                onClick={() => setView('dashboard')}
-              >
-                ← Back to Dashboard
+              <button className="stg-back-btn" onClick={() => setView('dashboard')}>
+                <span className="stg-back-btn__icon">←</span>
+                <span>Back to Dashboard</span>
               </button>
+
+
+
+
+
+
             </div>
           </header>
           <section className="settings-section">

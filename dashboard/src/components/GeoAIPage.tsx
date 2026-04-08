@@ -86,45 +86,8 @@ const MODULES = [
 export function GeoAIPage() {
   return (
     <div className="geoai-page">
-      <div className="geoai-page__header">
-        <div>
-          <p className="section-label">Spatial Intelligence</p>
-          <h2>GeoAI Integration</h2>
-        </div>
-        <div className="geoai-page__status">
-          <span className="geoai-status-pill">◌ QGIS STANDBY</span>
-          <button
-            className="geoai-upload-btn"
-            onClick={async () => {
-              const input = document.createElement('input')
-              input.type = 'file'
-              input.accept = '.geojson,.json'
-              input.onchange = async () => {
-                const file = input.files?.[0]
-                if (!file) return
-                const formData = new FormData()
-                formData.append('file', file)
-                try {
-                  const res = await fetch('http://localhost:8000/api/geoai/upload', {
-                    method: 'POST',
-                    body: formData,
-                  })
-                  if (res.ok) {
-                    alert('GeoJSON uploaded successfully!')
-                  } else {
-                    alert('Upload failed. Check backend logs.')
-                  }
-                } catch {
-                  alert('Backend not available.')
-                }
-              }
-              input.click()
-            }}
-          >
-            ↑ Upload GeoJSON
-          </button>
-        </div>
-      </div>
+      {/* Headers are provided by App.tsx topbar */}
+
 
       {/* ── Map Canvas Placeholder ────────────────────────────────────────── */}
       <motion.div

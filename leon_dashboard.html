@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BuildSight | Leon's Agent Monitor</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #0d1117;
+            --panel-bg: rgba(22, 27, 34, 0.7);
+            --text-main: #e6edf3;
+            --text-muted: #7d8590;
+            --accent: #2f81f7;
+            --accent-glow: rgba(47, 129, 247, 0.4);
+            --success: #238636;
+            --warning: #d29922;
+            --danger: #f85149;
+            --border: #30363d;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            background-image: radial-gradient(circle at top right, rgba(47, 129, 247, 0.1), transparent 40%),
+                              radial-gradient(circle at bottom left, rgba(35, 134, 54, 0.05), transparent 40%);
+            overflow-x: hidden;
+        }
+
+        header {
+            padding: 1.5rem 2rem;
+            border-bottom: 1px solid var(--border);
+            background: rgba(13, 17, 23, 0.8);
+            backdrop-filter: blur(12px);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .header-title {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .logo {
+            font-weight: 700;
+            font-size: 1.5rem;
+            letter-spacing: -0.5px;
+            background: linear-gradient(90deg, #2f81f7, #a371f7);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .status-badge {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: rgba(35, 134, 54, 0.1);
+            color: #3fb950;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: 500;
+            border: 1px solid rgba(35, 134, 54, 0.2);
+            transition: all 0.3s ease;
+        }
+
+        .status-badge.disconnected {
+            background: rgba(248, 81, 73, 0.1);
+            color: #ff7b72;
+            border-color: rgba(248, 81, 73, 0.2);
+        }
+
+        .pulse {
+            width: 8px;
+            height: 8px;
+            background-color: #3fb950;
+            border-radius: 50%;
+            box-shadow: 0 0 0 0 rgba(63, 185, 80, 0.7);
+            animation: pulse-animation 2s infinite;
+        }
+
+        .disconnected .pulse {
+            background-color: #ff7b72;
+            box-shadow: 0 0 0 0 rgba(255, 123, 114, 0.7);
+        }
+
+        @keyframes pulse-animation {
+            0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(63, 185, 80, 0.7); }
+            70% { transform: scale(1); box-shadow: 0 0 0 6px rgba(63, 185, 80, 0); }
+            100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(63, 185, 80, 0); }
+        }
+
+        main {
+            flex: 1;
+            padding: 2rem;
+            max-width: 1200px;
+            margin: 0 auto;
+            width: 100%;
+            display: grid;
+            grid-template-columns: 350px 1fr;
+            gap: 2rem;
+        }
+
+        @media (max-width: 900px) {
+            main {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .panel {
+            background: var(--panel-bg);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1.5rem;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 8px 24px rgba(0,0,0,0.2);
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .panel-header {
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--text-muted);
+            font-weight: 600;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 0.75rem;
+            margin-bottom: 0.5rem;
+        }
+
+        /* Mission Context constraints */
+        .mission-context {
+            color: var(--text-main);
+            font-size: 0.95rem;
+            line-height: 1.6;
+        }
+
+        .mission-context ul {
+            margin-left: 1.5rem;
+            margin-top: 0.5rem;
+            color: var(--text-muted);
+        }
+
+        /* Logs feed */
+        .feed-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+            overflow-y: auto;
+            padding-right: 0.5rem;
+        }
+
+        /* Custom scrollbar */
+        .feed-container::-webkit-scrollbar { width: 6px; }
+        .feed-container::-webkit-scrollbar-track { background: transparent; }
+        .feed-container::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+        .feed-container::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+        .log-entry {
+            background: rgba(13, 17, 23, 0.6);
+            border: 1px solid var(--border);
+            border-left: 3px solid var(--accent);
+            border-radius: 8px;
+            padding: 1.25rem;
+            animation: slideIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+            opacity: 0;
+            transform: translateY(20px);
+        }
+
+        @keyframes slideIn {
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .log-meta {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            margin-bottom: 0.5rem;
+        }
+
+        .log-title {
+            font-weight: 600;
+            font-size: 1.05rem;
+            margin-bottom: 0.5rem;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .log-body {
+            font-size: 0.95rem;
+            line-height: 1.5;
+            color: #c9d1d9;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+        
+        .empty-state {
+            text-align: center;
+            padding: 4rem 2rem;
+            color: var(--text-muted);
+            font-style: italic;
+            border: 1px dashed var(--border);
+            border-radius: 8px;
+        }
+        
+        .loading-spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 2px solid rgba(47, 129, 247, 0.3);
+            border-radius: 50%;
+            border-top-color: var(--accent);
+            animation: spin 1s ease-in-out infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="header-title">
+            <div class="logo">BuildSight</div>
+            <div style="color: var(--text-muted); font-size: 0.9rem; border-left: 1px solid var(--border); padding-left: 1rem;">
+                Leon Task Monitor
+            </div>
+        </div>
+        <div class="status-badge" id="connStatus">
+            <div class="pulse"></div>
+            <span id="connText">Connecting to ntfy...</span>
+        </div>
+    </header>
+
+    <main>
+        <!-- Sidebar context info -->
+        <div class="panel">
+            <div class="panel-header">Current Objective</div>
+            <div class="mission-context">
+                <strong>Task:</strong> PPE Pipeline Threshold Optimization
+                <br><br>
+                <strong>Goal:</strong> Reduce heavy machinery false positives across 4 site conditions.
+                <br><br>
+                <strong>Target Classes:</strong>
+                <ul>
+                    <li>worker</li>
+                    <li>helmet</li>
+                    <li>safety_vest</li>
+                </ul>
+                <br>
+                <strong>Suppressed:</strong> Excavators, cranes, trucks, hooks, background elements.
+                <br><br>
+                <div style="display: flex; align-items: center; gap: 8px; font-size: 0.85rem; color: var(--accent);">
+                    <div class="loading-spinner"></div>
+                    Leon is optimizing thresholds...
+                </div>
+            </div>
+        </div>
+
+        <!-- Logs feed -->
+        <div class="panel" style="display: flex; flex-direction: column;">
+            <div class="panel-header">Live Feed (buildsight-tournament-2026)</div>
+            <div class="feed-container" id="feed">
+                <!-- Fallback empty state, removed on first message -->
+                <div class="empty-state" id="emptyState">
+                    Waiting for Leon to post updates to the topic...
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        const NTFY_TOPIC = 'buildsight-tournament-2026';
+        const feedContainer = document.getElementById('feed');
+        const emptyState = document.getElementById('emptyState');
+        const connBadge = document.getElementById('connStatus');
+        const connText = document.getElementById('connText');
+        
+        let eventSource = null;
+
+        function connectToNtfy() {
+            if (eventSource) {
+                eventSource.close();
+            }
+
+            // Using SSE to listen to the topic in real-time. 'since=1h' to grab recent contexts.
+            const url = `https://ntfy.sh/${NTFY_TOPIC}/sse?since=2h`;
+            eventSource = new EventSource(url);
+
+            eventSource.onopen = () => {
+                connBadge.classList.remove('disconnected');
+                connText.innerText = `Listening securely to ${NTFY_TOPIC}`;
+            };
+
+            eventSource.onerror = (err) => {
+                console.error("SSE Error:", err);
+                connBadge.classList.add('disconnected');
+                connText.innerText = "Connection lost. Reconnecting...";
+            };
+
+            eventSource.onmessage = (e) => {
+                try {
+                    const data = JSON.parse(e.data);
+                    
+                    // Filter out keepalive/open events
+                    if (data.event !== "message") return;
+                    
+                    addLogEntry(data);
+                } catch (error) {
+                    console.error("Error parsing ntfy message:", error);
+                }
+            };
+        }
+
+        function formatDateTime(timestampObj) {
+            // ntfy timestamp is normally in seconds
+            const date = new Date(timestampObj * 1000);
+            return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        }
+
+        function addLogEntry(data) {
+            // Remove empty state if present
+            if (emptyState.parentNode) {
+                emptyState.remove();
+            }
+
+            const message = data.message || "No content";
+            const title = data.title || "Target Node: SASTRA A100";
+            const timeStr = formatDateTime(data.time);
+            
+            // Check priority/tags for styling
+            const tags = data.tags || [];
+            let borderColor = 'var(--accent)';
+            let icon = '⚡';
+            
+            if(tags.includes('warning') || tags.includes('loudspeaker')) {
+                borderColor = 'var(--warning)';
+                icon = '⚠️';
+            } else if (tags.includes('white_check_mark') || tags.includes('tada') || data.priority >= 4) {
+                borderColor = 'var(--success)';
+                icon = '✅';
+            } else if (tags.includes('skull') || tags.includes('x')) {
+                borderColor = 'var(--danger)';
+                icon = '❌';
+            }
+
+            const el = document.createElement('div');
+            el.className = 'log-entry';
+            el.style.borderLeftColor = borderColor;
+
+            el.innerHTML = `
+                <div class="log-meta">
+                    <span>Leon (BuildSight Executor)</span>
+                    <span>${timeStr}</span>
+                </div>
+                <div class="log-title">${icon} ${title}</div>
+                <div class="log-body">${escapeHTML(message)}</div>
+            `;
+
+            // Prepend new messages to the top
+            feedContainer.insertBefore(el, feedContainer.firstChild);
+        }
+
+        function escapeHTML(str) {
+            return str
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+
+        // Initialize connection
+        connectToNtfy();
+    </script>
+</body>
+</html>

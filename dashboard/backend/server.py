@@ -47,6 +47,27 @@ except ImportError:
 
 # ── paths ──────────────────────────────────────────────────────────────────────
 ROOT = Path(__file__).parent.parent.parent   # BuildSight root
+BACKEND_DIR = Path(__file__).parent
+
+
+def _load_dotenv_file(path: Path) -> None:
+    if not path.exists():
+        return
+
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+
+        key, value = line.split("=", 1)
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        if key and key not in os.environ:
+            os.environ[key] = value
+
+
+for _dotenv_path in (ROOT / ".env", BACKEND_DIR / ".env"):
+    _load_dotenv_file(_dotenv_path)
 
 
 def _env_path(name: str, default: Path) -> Path:
@@ -260,7 +281,7 @@ else:
     logger.warning("MISTRAL_API_KEY not found. Mistral AI disabled.")
 
 # ── Google Gemini (fallback provider) ─────────────────────────────────────────
-AI_API_KEY = os.environ.get("GOOGLE_API_KEY")
+AI_API_KEY = os.environ.get("GOOGLE_API_KEY") or os.environ.get("GEMINI_API_KEY")
 ai_model = None
 
 if AI_API_KEY and genai is not None:

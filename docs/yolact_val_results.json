@@ -1,0 +1,20 @@
+{
+  "YOLACT_plusplus": {
+    "overall": {
+      "images_evaluated": 888,
+      "precision": 0.6323,
+      "recall": 0.6786,
+      "f1": 0.6546,
+      "mAP50": 0.5436,
+      "avg_lat_ms": 33.53,
+      "tp_total": 12234,
+      "fp_total": 7114,
+      "fn_total": 5795,
+      "per_class_ap50": {
+        "helmet": 0.4322,
+        "safety_vest": 0.4896,
+        "worker": 0.7089
+      }
+    }
+  }
+}

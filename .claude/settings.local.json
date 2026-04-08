@@ -42,7 +42,13 @@
       "Bash(find \"Dataset/Final_Annotated_Dataset/images\" -type f -delete)",
       "Bash(find \"Dataset/Final_Annotated_Dataset/labels\" -type f -delete)",
       "Bash(find \"Dataset/Final_Annotated_Dataset/labels_seg\" -type f -delete)",
-      "Bash(PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True python scripts/annotate_indian_dataset.py --conditions Normal_Site_Condition --skip-sam)"
+      "Bash(PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True python scripts/annotate_indian_dataset.py --conditions Normal_Site_Condition --skip-sam)",
+      "Bash(npx vite:*)",
+      "Bash(npm --version)",
+      "Bash(npm create:*)",
+      "Bash(npm install:*)",
+      "Bash(npm run:*)",
+      "Bash(curl -s http://localhost:5174/)"
     ]
   }
 }

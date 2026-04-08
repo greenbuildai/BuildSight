@@ -14,13 +14,13 @@ interface Message {
 const STORAGE_KEY = 'buildsight.turner.messages'
 
 const QUICK_ACTIONS = [
-  { label: 'Site Summary',    query: 'Give me a summary of the current site status.' },
-  { label: 'Helmet Check',   query: 'How many workers are not wearing helmets?' },
-  { label: 'Highest Risk',   query: 'Which area has the highest risk right now?' },
-  { label: 'Top Violation',  query: 'Show me the most common safety violation.' },
+  { label: 'Site Brief', query: 'I need a full site safety brief for the current shift.' },
   { label: 'PPE Compliance', query: 'Which zone has the lowest PPE compliance?' },
-  { label: 'Active Workers', query: 'How many workers are currently active on site?' },
-  { label: 'Safety Brief',   query: 'Give me a safety summary for today.' },
+  { label: 'High-Vis Issues', query: 'List all active high-vis vest violations.' },
+  { label: 'Hardhat Check', query: 'Identify all workers without hardhats.' },
+  { label: 'Risk Zones', query: 'Generate a risk map of the current site.' },
+  { label: 'Safety Drift', query: 'Analyze safety compliance drift in the last hour.' },
+  { label: 'Active Alerts', query: 'Summarize the highest priority alerts now.' },
 ]
 
 function createMessage(role: Message['role'], content: string): Message {
@@ -80,7 +80,30 @@ function renderMessageContent(content: string) {
   })
 }
 
-export const TurnerAssistant: React.FC<{ isHero?: boolean }> = ({ isHero = false }) => {
+function ChatAvatar({ role }: { role: Message['role'] }) {
+  if (role === 'user') {
+    return (
+      <span className="chat-bubble__avatar-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" focusable="false">
+          <path d="M12 3.5a4.5 4.5 0 0 0-4.5 4.5v1.1a2.8 2.8 0 0 0-1.8 2.6v1.1h12.6v-1.1a2.8 2.8 0 0 0-1.8-2.6V8A4.5 4.5 0 0 0 12 3.5Zm-6.1 10.8h12.2c.7 0 1.3.6 1.3 1.3v2.9h-2.1v-1.7H6.7v1.7H4.6v-2.9c0-.7.6-1.3 1.3-1.3Zm2.2 4h7.8v2.2H8.1v-2.2Z" fill="currentColor" />
+        </svg>
+      </span>
+    )
+  }
+
+  return (
+    <span className="chat-bubble__avatar-icon" aria-hidden="true">
+      <svg viewBox="0 0 24 24" focusable="false">
+        <path d="M12 3.2 5.8 6v3.2c0 4 2.6 7.7 6.2 8.9 3.6-1.2 6.2-4.9 6.2-8.9V6L12 3.2Zm0 2.1 3.8 1.7v2.2h-1.1v1.6a2.7 2.7 0 0 1-5.4 0V9.2H8.2V7l3.8-1.7Zm-1 5.5h2v.6a1 1 0 0 1-2 0v-.6Zm-2.8 8.1c1.1-.5 2.4-.8 3.8-.8s2.7.3 3.8.8v1.9H8.2v-1.9Z" fill="currentColor" />
+      </svg>
+    </span>
+  )
+}
+
+export const TurnerAssistant: React.FC<{ isHero?: boolean; onOpenSettings?: () => void }> = ({
+  isHero = false,
+  onOpenSettings,
+}) => {
   const { stats, liveAlerts } = useDetectionStats()
   const { settings } = useSettings()
   const [messages, setMessages] = useState<Message[]>(() => {
@@ -97,7 +120,6 @@ export const TurnerAssistant: React.FC<{ isHero?: boolean }> = ({ isHero = false
   const [inputValue, setInputValue] = useState('')
   const [isTyping, setIsTyping] = useState(false)
   const [isExpanded, setIsExpanded] = useState(false)
-  const [requestError, setRequestError] = useState<string | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const messagesRef = useRef<Message[]>(messages)
 
@@ -135,9 +157,6 @@ export const TurnerAssistant: React.FC<{ isHero?: boolean }> = ({ isHero = false
   }, [isExpanded])
 
   const workers = Math.max(stats.totalWorkers, 0)
-  const helmetCompliance = workers > 0 ? Math.round((stats.helmetsDetected / workers) * 100) : 100
-  const vestCompliance = workers > 0 ? Math.round((stats.vestsDetected / workers) * 100) : 100
-  const confidencePct = Math.round(stats.avgConfidence * 100)
   const activeAlerts = liveAlerts.slice(0, 5)
 
   const buildContext = () => ({
@@ -168,7 +187,6 @@ export const TurnerAssistant: React.FC<{ isHero?: boolean }> = ({ isHero = false
     setMessages((prev) => [...prev, createMessage('user', text)])
     setInputValue('')
     setIsTyping(true)
-    setRequestError(null)
 
     const payload = JSON.stringify({ message: text, history: historySnapshot, context: buildContext() })
     const headers  = { 'Content-Type': 'application/json' }
@@ -206,7 +224,7 @@ export const TurnerAssistant: React.FC<{ isHero?: boolean }> = ({ isHero = false
 
               try {
                 const obj = JSON.parse(payload) as { token?: string; error?: string }
-                if (obj.error) { setRequestError(obj.error); break }
+                if (obj.error) { break }
                 if (obj.token) {
                   setMessages((prev) => prev.map((m) =>
                     m.id === assistantId ? { ...m, content: m.content + obj.token } : m
@@ -231,9 +249,8 @@ export const TurnerAssistant: React.FC<{ isHero?: boolean }> = ({ isHero = false
         : "I couldn't complete that review. Check the backend log for the Turner request trace."
 
       setMessages((prev) => [...prev, createMessage('assistant', reply)])
-      if (!resp.ok && typeof data?.error === 'string') setRequestError(data.error)
+      if (!resp.ok && typeof data?.error === 'string') { /* log trace */ }
     } catch {
-      setRequestError('BACKEND_UNREACHABLE')
       setMessages((prev) => [
         ...prev,
         createMessage('assistant', 'The Turner backend is unreachable. Verify the FastAPI service is running on port 8000.'),
@@ -244,62 +261,114 @@ export const TurnerAssistant: React.FC<{ isHero?: boolean }> = ({ isHero = false
   }
 
   const renderConversation = () => (
-    <div className="turner-assistant__messages" ref={scrollRef}>
-      <AnimatePresence initial={false}>
-        {messages.map((message) => (
-          <motion.article 
-            key={message.id} 
-            className={`chat-bubble chat-bubble--${message.role}`}
-            initial={{ opacity: 0, scale: 0.95, y: 10 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            transition={{ type: 'spring', stiffness: 400, damping: 30 }}
-          >
-            <div className="chat-bubble__avatar" aria-hidden="true">
-              {message.role === 'assistant' ? 'TR' : 'YO'}
-            </div>
-            <div className="chat-bubble__body">
-              <div className="chat-bubble__meta">
-                <strong>{message.role === 'assistant' ? 'Turner' : 'Operator'}</strong>
-                <span>{formatTime(message.timestamp)}</span>
+    <div className="turner-assistant__messages-container">
+      <div className="turner-assistant__messages" ref={scrollRef} id="turner-scroll-container">
+        <AnimatePresence initial={false}>
+          {messages.map((message) => (
+            <motion.article 
+              key={message.id} 
+              className={`chat-bubble chat-bubble--${message.role}`}
+              initial={{ opacity: 0, scale: 0.98, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+            >
+              <div className="chat-bubble__avatar" aria-hidden="true">
+                <ChatAvatar role={message.role} />
               </div>
-              <div className="chat-bubble__content">
-                {renderMessageContent(message.content)}
-              </div>
-            </div>
-          </motion.article>
-        ))}
-      </AnimatePresence>
-
-      <AnimatePresence>
-        {isTyping && (
-          <motion.article 
-            className="chat-bubble chat-bubble--assistant chat-bubble--thinking"
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0 }}
-          >
-            <div className="chat-bubble__avatar" aria-hidden="true">TR</div>
-            <div className="chat-bubble__body">
-              <div className="chat-bubble__meta">
-                <strong>Turner</strong>
-                <span>Analyzing live telemetry</span>
-              </div>
-              <div className="turner-thinking">
-                <div className="turner-thinking__pulse" aria-hidden="true" />
-                <div>
-                  <strong>Turner is thinking...</strong>
-                  <p>Cross-checking PPE compliance, escalations, and live site conditions.</p>
+              <div className="chat-bubble__main">
+                <div className="chat-bubble__meta">
+                  <span className="chat-bubble__sender">
+                    {message.role === 'assistant' ? 'TURNER-AI' : 'OPERATOR'}
+                  </span>
+                  <span className="chat-bubble__timestamp">{formatTime(message.timestamp)}</span>
+                </div>
+                <div className="chat-bubble__body">
+                  <div className="chat-bubble__content">
+                    {renderMessageContent(message.content)}
+                  </div>
                 </div>
               </div>
-            </div>
-          </motion.article>
-        )}
-      </AnimatePresence>
+            </motion.article>
+          ))}
+        </AnimatePresence>
+
+        <AnimatePresence>
+          {isTyping && (
+            <motion.article 
+              className="chat-bubble chat-bubble--assistant chat-bubble--thinking"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+            >
+              <div className="chat-bubble__avatar" aria-hidden="true">
+                <ChatAvatar role="assistant" />
+              </div>
+              <div className="chat-bubble__main">
+                <div className="chat-bubble__meta">
+                  <span className="chat-bubble__sender">TURNER-AI</span>
+                  <span className="chat-bubble__status">ANALYZING</span>
+                </div>
+                <div className="chat-bubble__body">
+                  <div className="turner-thinking">
+                    <div className="turner-thinking__pulse" />
+                    <p>Processing live site telemetry...</p>
+                  </div>
+                </div>
+              </div>
+            </motion.article>
+          )}
+        </AnimatePresence>
+        <div className="turner-scroll-spacer" style={{ height: '2rem' }} />
+      </div>
     </div>
   )
 
   const renderComposer = () => (
     <div className="turner-assistant__footer">
+      <form
+        className="turner-composer"
+        onSubmit={(event) => {
+          event.preventDefault()
+          void handleSend()
+        }}
+      >
+        <div className="turner-composer__shell">
+          <textarea
+            rows={1}
+            placeholder="How can I help you today?"
+            value={inputValue}
+            className="turner-composer__input"
+            onChange={(event) => setInputValue(event.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault()
+                void handleSend()
+              }
+            }}
+          />
+          <div className="turner-composer__toolbar">
+
+
+            <div className="turner-composer__meta">
+              <span className="turner-composer__model">{stats.modelName || 'Turner AI Live'}</span>
+              <span className="turner-composer__presence" aria-hidden="true" />
+            </div>
+
+            <div className="turner-composer__controls">
+              <button type="button" className="turner-composer__voice" aria-label="Voice input" disabled={isTyping}>
+                <span />
+                <span />
+                <span />
+                <span />
+              </button>
+              <button type="submit" className="turner-composer__send" disabled={!inputValue.trim() || isTyping}>
+                <span className="turner-composer__send-arrow" aria-hidden="true">^</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </form>
+
       <div className="turner-assistant__chips">
         {QUICK_ACTIONS.map((action, idx) => (
           <motion.button
@@ -308,105 +377,37 @@ export const TurnerAssistant: React.FC<{ isHero?: boolean }> = ({ isHero = false
             className="turner-chip"
             onClick={() => void handleSend(action.query)}
             disabled={isTyping}
-            initial={{ opacity: 0, y: 5 }}
+            initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.1 + idx * 0.03 }}
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
+            whileHover={{ scale: 1.04 }}
+            whileTap={{ scale: 0.96 }}
+            style={{ flexShrink: 0 }}
           >
-            <span className="turner-chip__dot" aria-hidden="true" />
             {action.label}
           </motion.button>
         ))}
       </div>
-
-      <form
-        className="turner-composer"
-        onSubmit={(event) => {
-          event.preventDefault()
-          void handleSend()
-        }}
-      >
-        <label className="turner-composer__field">
-          <span className="sr-only">Ask Turner about site safety</span>
-          <textarea
-            rows={isExpanded ? 3 : 2}
-            placeholder="Ask Turner for a site brief, PPE review, or next action..."
-            value={inputValue}
-            onChange={(event) => setInputValue(event.target.value)}
-          />
-        </label>
-        <button type="submit" className="turner-composer__send" disabled={!inputValue.trim() || isTyping}>
-          Dispatch
-        </button>
-      </form>
-
-      {requestError && (
-        <p className="turner-assistant__status">
-          Request trace ended with `{requestError}`. The assistant response above reflects the backend fallback path.
-        </p>
-      )}
     </div>
   )
 
   const renderPanel = (inModal = false) => (
     <section className={`turner-assistant ${isHero ? 'turner-assistant--hero' : ''} ${inModal ? 'turner-assistant--modal' : ''}`}>
-      <header className="turner-assistant__header">
-        <div className="turner-assistant__identity">
-          <div className="turner-assistant__badge">
-            <span className="turner-assistant__icon" aria-hidden="true">TR</span>
-            <div className="turner-assistant__title">
-              <p>Turner AI Supervisor</p>
-              <h4>Live Construction Safety Review</h4>
-            </div>
-          </div>
-
-          <div className="turner-assistant__telemetry">
-            <div className="turner-telemetry-card">
-              <span>Workers</span>
-              <strong className="monospaced-dataviz">{workers}</strong>
-            </div>
-            <div className="turner-telemetry-card">
-              <span>Helmet</span>
-              <strong className={`monospaced-dataviz ${helmetCompliance < 85 ? 'glow-critical' : 'glow-ok'}`}>
-                {helmetCompliance}%
-              </strong>
-            </div>
-            <div className="turner-telemetry-card">
-              <span>Vest</span>
-              <strong className={`monospaced-dataviz ${vestCompliance < 80 ? 'glow-critical' : 'glow-ok'}`}>
-                {vestCompliance}%
-              </strong>
-            </div>
-            <div className="turner-telemetry-card">
-              <span>Confidence</span>
-              <strong className={`monospaced-dataviz ${confidencePct < 70 ? 'glow-warning' : 'glow-ok'}`}>
-                {confidencePct}%
-              </strong>
-            </div>
-          </div>
-        </div>
-
-        <div className="turner-assistant__actions">
-          <div className="turner-assistant__mode">
-            <span className={`status-indicator status-indicator--${stats.isRunning ? 'active' : 'idle'}`} />
-            {stats.isRunning ? 'Active Telemetry Sync' : 'Awaiting Live Scan'}
+      <div className="panel-content-wrapper turner-assistant__panel">
+        <div className="panel-heading">
+          <div>
+            <p className="section-label">AI Supervisor</p>
+            <h3>Turner AI Chat</h3>
           </div>
           {!inModal && (
-            <button
-              type="button"
-              className="turner-assistant__expand"
-              onClick={() => setIsExpanded(true)}
-            >
-              Expand Review
-            </button>
+            <p className="panel-meta">Live site questions, summaries, and follow-up actions</p>
           )}
         </div>
-      </header>
 
-      <div className="turner-assistant__body">
-        {renderConversation()}
-        {renderComposer()}
+        <div className="turner-assistant__body">
+          {renderConversation()}
+          {renderComposer()}
+        </div>
       </div>
     </section>
   )

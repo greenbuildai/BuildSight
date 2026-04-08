@@ -1,0 +1,7 @@
+{
+  "total_annotations": 92290,
+  "sam_masks": 92290,
+  "sam_mask_pct": 100.0,
+  "bbox_fallbacks": 0,
+  "bbox_fallback_pct": 0.0
+}

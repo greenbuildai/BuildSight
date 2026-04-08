@@ -1,0 +1,690 @@
+{
+  "yolo11": {
+    "S1_normal": {
+      "mAP50": 0.3455,
+      "precision": 0.8226,
+      "recall": 0.3728,
+      "F1": 0.5131,
+      "total_FP": 304,
+      "total_FN": 1825,
+      "per_class": {
+        "helmet": {
+          "AP50": 0.1808,
+          "precision": 0.8882,
+          "recall": 0.1815,
+          "F1": 0.3014,
+          "TP": 143,
+          "FP": 18,
+          "FN": 645
+        },
+        "safety_vest": {
+          "AP50": 0.3222,
+          "precision": 0.6695,
+          "recall": 0.3927,
+          "F1": 0.495,
+          "TP": 472,
+          "FP": 233,
+          "FN": 730
+        },
+        "worker": {
+          "AP50": 0.5335,
+          "precision": 0.9102,
+          "recall": 0.5441,
+          "F1": 0.681,
+          "TP": 537,
+          "FP": 53,
+          "FN": 450
+        }
+      },
+      "FPS": 8.72,
+      "n_imgs": 167,
+      "model": "yolo11",
+      "condition": "S1_normal",
+      "eval_time_s": 67.8
+    },
+    "S2_dusty": {
+      "mAP50": 0.5588,
+      "precision": 0.7625,
+      "recall": 0.6241,
+      "F1": 0.6864,
+      "total_FP": 267,
+      "total_FN": 580,
+      "per_class": {
+        "helmet": {
+          "AP50": 0.3931,
+          "precision": 0.6863,
+          "recall": 0.4667,
+          "F1": 0.5556,
+          "TP": 210,
+          "FP": 96,
+          "FN": 240
+        },
+        "safety_vest": {
+          "AP50": 0.5621,
+          "precision": 0.6484,
+          "recall": 0.6582,
+          "F1": 0.6533,
+          "TP": 260,
+          "FP": 141,
+          "FN": 135
+        },
+        "worker": {
+          "AP50": 0.7213,
+          "precision": 0.9529,
+          "recall": 0.7475,
+          "F1": 0.8378,
+          "TP": 607,
+          "FP": 30,
+          "FN": 205
+        }
+      },
+      "FPS": 11.01,
+      "n_imgs": 213,
+      "model": "yolo11",
+      "condition": "S2_dusty",
+      "eval_time_s": 31.6
+    },
+    "S3_low_light": {
+      "mAP50": 0.2308,
+      "precision": 0.7925,
+      "recall": 0.2133,
+      "F1": 0.3361,
+      "total_FP": 73,
+      "total_FN": 1300,
+      "per_class": {
+        "helmet": {
+          "AP50": 0.1622,
+          "precision": 0.7424,
+          "recall": 0.1433,
+          "F1": 0.2402,
+          "TP": 49,
+          "FP": 17,
+          "FN": 293
+        },
+        "safety_vest": {
+          "AP50": 0.1722,
+          "precision": 0.6992,
+          "recall": 0.1517,
+          "F1": 0.2493,
+          "TP": 86,
+          "FP": 37,
+          "FN": 481
+        },
+        "worker": {
+          "AP50": 0.3581,
+          "precision": 0.9358,
+          "recall": 0.345,
+          "F1": 0.5041,
+          "TP": 277,
+          "FP": 19,
+          "FN": 526
+        }
+      },
+      "FPS": 9.35,
+      "n_imgs": 187,
+      "model": "yolo11",
+      "condition": "S3_low_light",
+      "eval_time_s": 32.5
+    },
+    "S4_crowded": {
+      "mAP50": 0.1977,
+      "precision": 0.6894,
+      "recall": 0.1951,
+      "F1": 0.3041,
+      "total_FP": 538,
+      "total_FN": 6571,
+      "per_class": {
+        "helmet": {
+          "AP50": 0.0909,
+          "precision": 0.6364,
+          "recall": 0.0492,
+          "F1": 0.0913,
+          "TP": 112,
+          "FP": 64,
+          "FN": 2166
+        },
+        "safety_vest": {
+          "AP50": 0.1527,
+          "precision": 0.5459,
+          "recall": 0.1994,
+          "F1": 0.2921,
+          "TP": 327,
+          "FP": 272,
+          "FN": 1313
+        },
+        "worker": {
+          "AP50": 0.3495,
+          "precision": 0.8859,
+          "recall": 0.3366,
+          "F1": 0.4879,
+          "TP": 1569,
+          "FP": 202,
+          "FN": 3092
+        }
+      },
+      "FPS": 8.42,
+      "n_imgs": 124,
+      "model": "yolo11",
+      "condition": "S4_crowded",
+      "eval_time_s": 27.0
+    }
+  },
+  "yolo26": {
+    "S1_normal": {
+      "mAP50": 0.3772,
+      "precision": 0.8289,
+      "recall": 0.4044,
+      "F1": 0.5436,
+      "total_FP": 273,
+      "total_FN": 1747,
+      "per_class": {
+        "helmet": {
+          "AP50": 0.2639,
+          "precision": 0.8636,
+          "recall": 0.2652,
+          "F1": 0.4058,
+          "TP": 209,
+          "FP": 33,
+          "FN": 579
+        },
+        "safety_vest": {
+          "AP50": 0.3352,
+          "precision": 0.7372,
+          "recall": 0.3968,
+          "F1": 0.516,
+          "TP": 477,
+          "FP": 170,
+          "FN": 725
+        },
+        "worker": {
+          "AP50": 0.5324,
+          "precision": 0.886,
+          "recall": 0.5512,
+          "F1": 0.6796,
+          "TP": 544,
+          "FP": 70,
+          "FN": 443
+        }
+      },
+      "FPS": 9.71,
+      "n_imgs": 167,
+      "model": "yolo26",
+      "condition": "S1_normal",
+      "eval_time_s": 32.9
+    },
+    "S2_dusty": {
+      "mAP50": 0.5585,
+      "precision": 0.7969,
+      "recall": 0.619,
+      "F1": 0.6968,
+      "total_FP": 222,
+      "total_FN": 605,
+      "per_class": {
+        "helmet": {
+          "AP50": 0.4708,
+          "precision": 0.7492,
+          "recall": 0.5044,
+          "F1": 0.6029,
+          "TP": 227,
+          "FP": 76,
+          "FN": 223
+        },
+        "safety_vest": {
+          "AP50": 0.573,
+          "precision": 0.6981,
+          "recall": 0.6557,
+          "F1": 0.6762,
+          "TP": 259,
+          "FP": 112,
+          "FN": 136
+        },
+        "worker": {
+          "AP50": 0.6318,
+          "precision": 0.9433,
+          "recall": 0.697,
+          "F1": 0.8017,
+          "TP": 566,
+          "FP": 34,
+          "FN": 246
+        }
+      },
+      "FPS": 11.14,
+      "n_imgs": 213,
+      "model": "yolo26",
+      "condition": "S2_dusty",
+      "eval_time_s": 31.2
+    },
+    "S3_low_light": {
+      "mAP50": 0.2629,
+      "precision": 0.79,
+      "recall": 0.2615,
+      "F1": 0.3929,
+      "total_FP": 92,
+      "total_FN": 1214,
+      "per_class": {
+        "helmet": {
+          "AP50": 0.1748,
+          "precision": 0.7234,
+          "recall": 0.1988,
+          "F1": 0.3119,
+          "TP": 68,
+          "FP": 26,
+          "FN": 274
+        },
+        "safety_vest": {
+          "AP50": 0.1677,
+          "precision": 0.7293,
+          "recall": 0.1711,
+          "F1": 0.2771,
+          "TP": 97,
+          "FP": 36,
+          "FN": 470
+        },
+        "worker": {
+          "AP50": 0.4463,
+          "precision": 0.9174,
+          "recall": 0.4147,
+          "F1": 0.5712,
+          "TP": 333,
+          "FP": 30,
+          "FN": 470
+        }
+      },
+      "FPS": 9.22,
+      "n_imgs": 187,
+      "model": "yolo26",
+      "condition": "S3_low_light",
+      "eval_time_s": 32.3
+    },
+    "S4_crowded": {
+      "mAP50": 0.2023,
+      "precision": 0.7261,
+      "recall": 0.2165,
+      "F1": 0.3335,
+      "total_FP": 532,
+      "total_FN": 6334,
+      "per_class": {
+        "helmet": {
+          "AP50": 0.0909,
+          "precision": 0.5838,
+          "recall": 0.0887,
+          "F1": 0.154,
+          "TP": 202,
+          "FP": 144,
+          "FN": 2076
+        },
+        "safety_vest": {
+          "AP50": 0.1656,
+          "precision": 0.7311,
+          "recall": 0.189,
+          "F1": 0.3004,
+          "TP": 310,
+          "FP": 114,
+          "FN": 1330
+        },
+        "worker": {
+          "AP50": 0.3503,
+          "precision": 0.8635,
+          "recall": 0.3718,
+          "F1": 0.5198,
+          "TP": 1733,
+          "FP": 274,
+          "FN": 2928
+        }
+      },
+      "FPS": 7.97,
+      "n_imgs": 124,
+      "model": "yolo26",
+      "condition": "S4_crowded",
+      "eval_time_s": 28.8
+    }
+  },
+  "yolact": {
+    "S1_normal": {
+      "mAP50": 0.3531,
+      "precision": 0.6911,
+      "recall": 0.3692,
+      "F1": 0.4813,
+      "total_FP": 492,
+      "total_FN": 1824,
+      "per_class": {
+        "helmet": {
+          "AP50": 0.1651,
+          "precision": 0.5874,
+          "recall": 0.1662,
+          "F1": 0.2591,
+          "TP": 131,
+          "FP": 92,
+          "FN": 657
+        },
+        "safety_vest": {
+          "AP50": 0.3688,
+          "precision": 0.6142,
+          "recall": 0.4318,
+          "F1": 0.5071,
+          "TP": 519,
+          "FP": 326,
+          "FN": 683
+        },
+        "worker": {
+          "AP50": 0.5254,
+          "precision": 0.8718,
+          "recall": 0.5096,
+          "F1": 0.6432,
+          "TP": 503,
+          "FP": 74,
+          "FN": 484
+        }
+      },
+      "FPS": 14.85,
+      "n_imgs": 167,
+      "model": "yolact",
+      "condition": "S1_normal",
+      "eval_time_s": 36.4
+    },
+    "S2_dusty": {
+      "mAP50": 0.4864,
+      "precision": 0.651,
+      "recall": 0.5541,
+      "F1": 0.5987,
+      "total_FP": 480,
+      "total_FN": 702,
+      "per_class": {
+        "helmet": {
+          "AP50": 0.3661,
+          "precision": 0.625,
+          "recall": 0.4111,
+          "F1": 0.496,
+          "TP": 185,
+          "FP": 111,
+          "FN": 265
+        },
+        "safety_vest": {
+          "AP50": 0.4669,
+          "precision": 0.4315,
+          "recall": 0.5899,
+          "F1": 0.4984,
+          "TP": 233,
+          "FP": 307,
+          "FN": 162
+        },
+        "worker": {
+          "AP50": 0.6263,
+          "precision": 0.8965,
+          "recall": 0.6613,
+          "F1": 0.7612,
+          "TP": 537,
+          "FP": 62,
+          "FN": 275
+        }
+      },
+      "FPS": 15.98,
+      "n_imgs": 213,
+      "model": "yolact",
+      "condition": "S2_dusty",
+      "eval_time_s": 41.8
+    },
+    "S3_low_light": {
+      "mAP50": 0.2074,
+      "precision": 0.5684,
+      "recall": 0.215,
+      "F1": 0.312,
+      "total_FP": 310,
+      "total_FN": 1297,
+      "per_class": {
+        "helmet": {
+          "AP50": 0.1403,
+          "precision": 0.5972,
+          "recall": 0.1257,
+          "F1": 0.2077,
+          "TP": 43,
+          "FP": 29,
+          "FN": 299
+        },
+        "safety_vest": {
+          "AP50": 0.1397,
+          "precision": 0.36,
+          "recall": 0.1905,
+          "F1": 0.2491,
+          "TP": 108,
+          "FP": 192,
+          "FN": 459
+        },
+        "worker": {
+          "AP50": 0.3421,
+          "precision": 0.7479,
+          "recall": 0.3288,
+          "F1": 0.4567,
+          "TP": 264,
+          "FP": 89,
+          "FN": 539
+        }
+      },
+      "FPS": 16.18,
+      "n_imgs": 187,
+      "model": "yolact",
+      "condition": "S3_low_light",
+      "eval_time_s": 39.6
+    },
+    "S4_crowded": {
+      "mAP50": 0.1604,
+      "precision": 0.5146,
+      "recall": 0.1547,
+      "F1": 0.2379,
+      "total_FP": 994,
+      "total_FN": 6956,
+      "per_class": {
+        "helmet": {
+          "AP50": 0.0909,
+          "precision": 0.4392,
+          "recall": 0.0364,
+          "F1": 0.0673,
+          "TP": 83,
+          "FP": 106,
+          "FN": 2195
+        },
+        "safety_vest": {
+          "AP50": 0.1339,
+          "precision": 0.3004,
+          "recall": 0.15,
+          "F1": 0.2001,
+          "TP": 246,
+          "FP": 573,
+          "FN": 1394
+        },
+        "worker": {
+          "AP50": 0.2563,
+          "precision": 0.8042,
+          "recall": 0.2776,
+          "F1": 0.4128,
+          "TP": 1294,
+          "FP": 315,
+          "FN": 3367
+        }
+      },
+      "FPS": 14.17,
+      "n_imgs": 124,
+      "model": "yolact",
+      "condition": "S4_crowded",
+      "eval_time_s": 36.3
+    }
+  },
+  "samurai": {
+    "S1_normal": {
+      "note": "SAMURAI_GT is ground-truth reference \u2014 scores are theoretical ceiling",
+      "mAP50": 1.0,
+      "mAP50_95": 1.0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "F1": 1.0,
+      "FPS": "N/A (GT overlay)",
+      "total_FP": 0,
+      "total_FN": 0,
+      "n_imgs": 167,
+      "per_class": {
+        "helmet": {
+          "AP50": 1.0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "F1": 1.0,
+          "TP": 788,
+          "FP": 0,
+          "FN": 0
+        },
+        "safety_vest": {
+          "AP50": 1.0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "F1": 1.0,
+          "TP": 1202,
+          "FP": 0,
+          "FN": 0
+        },
+        "worker": {
+          "AP50": 1.0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "F1": 1.0,
+          "TP": 987,
+          "FP": 0,
+          "FN": 0
+        }
+      },
+      "model": "samurai",
+      "condition": "S1_normal",
+      "eval_time_s": 1.9
+    },
+    "S2_dusty": {
+      "note": "SAMURAI_GT is ground-truth reference \u2014 scores are theoretical ceiling",
+      "mAP50": 1.0,
+      "mAP50_95": 1.0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "F1": 1.0,
+      "FPS": "N/A (GT overlay)",
+      "total_FP": 0,
+      "total_FN": 0,
+      "n_imgs": 213,
+      "per_class": {
+        "helmet": {
+          "AP50": 1.0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "F1": 1.0,
+          "TP": 450,
+          "FP": 0,
+          "FN": 0
+        },
+        "safety_vest": {
+          "AP50": 1.0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "F1": 1.0,
+          "TP": 395,
+          "FP": 0,
+          "FN": 0
+        },
+        "worker": {
+          "AP50": 1.0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "F1": 1.0,
+          "TP": 812,
+          "FP": 0,
+          "FN": 0
+        }
+      },
+      "model": "samurai",
+      "condition": "S2_dusty",
+      "eval_time_s": 2.4
+    },
+    "S3_low_light": {
+      "note": "SAMURAI_GT is ground-truth reference \u2014 scores are theoretical ceiling",
+      "mAP50": 1.0,
+      "mAP50_95": 1.0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "F1": 1.0,
+      "FPS": "N/A (GT overlay)",
+      "total_FP": 0,
+      "total_FN": 0,
+      "n_imgs": 187,
+      "per_class": {
+        "helmet": {
+          "AP50": 1.0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "F1": 1.0,
+          "TP": 342,
+          "FP": 0,
+          "FN": 0
+        },
+        "safety_vest": {
+          "AP50": 1.0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "F1": 1.0,
+          "TP": 567,
+          "FP": 0,
+          "FN": 0
+        },
+        "worker": {
+          "AP50": 1.0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "F1": 1.0,
+          "TP": 803,
+          "FP": 0,
+          "FN": 0
+        }
+      },
+      "model": "samurai",
+      "condition": "S3_low_light",
+      "eval_time_s": 2.3
+    },
+    "S4_crowded": {
+      "note": "SAMURAI_GT is ground-truth reference \u2014 scores are theoretical ceiling",
+      "mAP50": 1.0,
+      "mAP50_95": 1.0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "F1": 1.0,
+      "FPS": "N/A (GT overlay)",
+      "total_FP": 0,
+      "total_FN": 0,
+      "n_imgs": 124,
+      "per_class": {
+        "helmet": {
+          "AP50": 1.0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "F1": 1.0,
+          "TP": 2278,
+          "FP": 0,
+          "FN": 0
+        },
+        "safety_vest": {
+          "AP50": 1.0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "F1": 1.0,
+          "TP": 1640,
+          "FP": 0,
+          "FN": 0
+        },
+        "worker": {
+          "AP50": 1.0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "F1": 1.0,
+          "TP": 4661,
+          "FP": 0,
+          "FN": 0
+        }
+      },
+      "model": "samurai",
+      "condition": "S4_crowded",
+      "eval_time_s": 1.2
+    }
+  }
+}

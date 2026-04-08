@@ -27,6 +27,10 @@ env/
 ENV/
 env.bak/
 venv.bak/
+Backup/
+dashboard-v*/
+buildsight-base/
+buildsight-v*/
 
 # =========================
 # Node.js
@@ -104,14 +108,27 @@ runtime/
 # Binary Assets & Large Files
 # =========================
 *.mp4
+*.avi
+*.mov
 *.zip
+*.rar
+*.7z
 *.pdf
 *.pptx
+*.ppt
 *.mp3
 *.docx
+*.doc
 *.png
 *.jpg
 *.jpeg
+*.gif
+*.svg
+!buildsight_v2_5stage_pipeline.svg
+!torso_center_alignment_explanation.svg
+!BuildSight Logo.png
+!BuildSight Methodology.png
+!Methodology flowchart.png
 
 # Finalized Annotation Previews (Keep logic, ignore generated images)
 v9_normal_preview.png
@@ -132,3 +149,9 @@ methodology.txt
 pptx_text.txt
 presentation_text.txt
 nul
+git_status*.txt
+large-files.txt
+attachment.txt
+=
+*.db
+!dashboard/backend/buildsight.db

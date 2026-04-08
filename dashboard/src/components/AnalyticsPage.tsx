@@ -186,8 +186,6 @@ function RadarChart({ zones }: { zones: ZoneRisk[] }) {
 export function AnalyticsPage() {
   const { stats } = useDetectionStats()
   const [data, setData] = useState<AnalyticsData>(DEMO_DATA)
-  const [isLive, setIsLive] = useState(false)
-
   // Try to fetch backend analytics; fall back to demo data
   useEffect(() => {
     let mounted = true
@@ -198,7 +196,6 @@ export function AnalyticsPage() {
           const json = await res.json()
           if (mounted) {
             setData(json)
-            setIsLive(true)
           }
         }
       } catch {
@@ -251,23 +248,8 @@ export function AnalyticsPage() {
       animate={{ opacity: 1 }}
       transition={{ duration: 0.4 }}
     >
-      <div className="analytics-page__header">
-        <div>
-          <p className="section-label">Site Intelligence</p>
-          <motion.h2
-            initial={{ opacity: 0, x: -10 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ delay: 0.1, type: 'spring', stiffness: 300, damping: 30 }}
-          >
-            Analytics & Compliance
-          </motion.h2>
-        </div>
-        <div className="analytics-page__status">
-          <span className={`analytics-data-pill ${isLive ? 'analytics-data-pill--live' : 'analytics-data-pill--demo'}`}>
-            {isLive ? '● LIVE DATA' : '◌ DEMO DATA'}
-          </span>
-        </div>
-      </div>
+      {/* Headers are provided by App.tsx topbar */}
+
 
       <div className="analytics-grid">
         {/* ── 7-Day Compliance Drift ──────────────────────────────────────────── */}

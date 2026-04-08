@@ -1,0 +1,335 @@
+{
+  "type": "FeatureCollection",
+  "crs": {
+    "type": "name",
+    "properties": {
+      "name": "EPSG:4326"
+    }
+  },
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "zone": "site_boundary",
+        "risk": "none",
+        "alert": false,
+        "description": "Full construction site boundary",
+        "z_base_m": 0,
+        "z_top_m": 6.096,
+        "height_m": 6.096
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              78.66880589,
+              10.8165562,
+              0
+            ],
+            [
+              78.66903362,
+              10.8165562,
+              0
+            ],
+            [
+              78.66903362,
+              10.81669864,
+              0
+            ],
+            [
+              78.66880589,
+              10.81669864,
+              0
+            ],
+            [
+              78.66880589,
+              10.8165562,
+              0
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "zone": "high_risk_scaffolding",
+        "risk": "HIGH",
+        "alert": true,
+        "alert_level": "CRITICAL",
+        "description": "Scaffolding perimeter \u2014 ground to roof",
+        "z_base_m": 0,
+        "z_top_m": 6.096,
+        "height_m": 6.096,
+        "risk_elevation_note": "Risk INCREASES if worker detected above 3m (on upper scaffolding)"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              78.66881504,
+              10.81656524,
+              0
+            ],
+            [
+              78.66902447,
+              10.81656524,
+              0
+            ],
+            [
+              78.66902447,
+              10.81668959,
+              0
+            ],
+            [
+              78.66881504,
+              10.81668959,
+              0
+            ],
+            [
+              78.66881504,
+              10.81656524,
+              0
+            ]
+          ],
+          [
+            [
+              78.66884248,
+              10.81659237,
+              0
+            ],
+            [
+              78.66899704,
+              10.81659237,
+              0
+            ],
+            [
+              78.66899704,
+              10.81666246,
+              0
+            ],
+            [
+              78.66884248,
+              10.81666246,
+              0
+            ],
+            [
+              78.66884248,
+              10.81659237,
+              0
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "zone": "high_risk_staircase",
+        "risk": "HIGH",
+        "alert": true,
+        "alert_level": "CRITICAL",
+        "description": "Staircase zone \u2014 fall risk entire height",
+        "z_base_m": 0,
+        "z_top_m": 6.096,
+        "height_m": 6.096
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              78.66883333,
+              10.81665071,
+              0
+            ],
+            [
+              78.66887796,
+              10.81665071,
+              0
+            ],
+            [
+              78.66887796,
+              10.81667151,
+              0
+            ],
+            [
+              78.66883333,
+              10.81667151,
+              0
+            ],
+            [
+              78.66883333,
+              10.81665071,
+              0
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "zone": "moderate_risk_interior",
+        "risk": "MODERATE",
+        "alert": true,
+        "alert_level": "WARNING",
+        "description": "Interior active construction zone",
+        "z_base_m": 0,
+        "z_top_m": 4.8768,
+        "height_m": 4.877
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              78.66884248,
+              10.81659237,
+              0
+            ],
+            [
+              78.66897655,
+              10.81659237,
+              0
+            ],
+            [
+              78.66897655,
+              10.81666246,
+              0
+            ],
+            [
+              78.66884248,
+              10.81666246,
+              0
+            ],
+            [
+              78.66884248,
+              10.81659237,
+              0
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "zone": "low_risk_parking",
+        "risk": "LOW",
+        "alert": true,
+        "alert_level": "ADVISORY",
+        "description": "Car parking / site support area",
+        "z_base_m": 0,
+        "z_top_m": 6.096,
+        "height_m": 6.096
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              78.66898112,
+              10.81658333,
+              0
+            ],
+            [
+              78.66900618,
+              10.81658333,
+              0
+            ],
+            [
+              78.66900618,
+              10.81667151,
+              0
+            ],
+            [
+              78.66898112,
+              10.81667151,
+              0
+            ],
+            [
+              78.66898112,
+              10.81658333,
+              0
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "zone": "camera_fov_CAM01",
+        "type": "camera_coverage",
+        "camera_id": "CAM-01",
+        "camera_height_m": 7.62,
+        "camera_height_ft": 25,
+        "coverage": "Full site from neighbour building",
+        "fov_horizontal_deg": 60,
+        "note": "Coverage polygon at ground level projection"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              78.66891976,
+              10.81651098,
+              7.62
+            ],
+            [
+              78.66881504,
+              10.81658333,
+              0
+            ],
+            [
+              78.66881504,
+              10.81668959,
+              0
+            ],
+            [
+              78.66902447,
+              10.81668959,
+              0
+            ],
+            [
+              78.66902447,
+              10.81658333,
+              0
+            ],
+            [
+              78.66891976,
+              10.81651098,
+              7.62
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "zone": "camera_CAM01_position",
+        "type": "camera",
+        "camera_id": "CAM-01",
+        "building": "Neighbour Building",
+        "camera_height_m": 7.62,
+        "camera_height_ft": 25,
+        "construction_building_height_m": 6.096,
+        "elevation_advantage_m": 1.524,
+        "description": "Camera mounted in neighbour building, looking N into construction site"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          78.66891976,
+          10.81651098,
+          7.62
+        ]
+      }
+    }
+  ]
+}
