@@ -1,0 +1,18 @@
+[Unit]
+Description=BuildSight FastAPI backend
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=buildsight
+Group=buildsight
+WorkingDirectory=/opt/buildsight
+EnvironmentFile=/opt/buildsight/deploy/sastra/backend.env
+ExecStart=/opt/buildsight/.venv-inference/bin/python /opt/buildsight/dashboard/backend/server.py
+Restart=always
+RestartSec=5
+TimeoutStartSec=180
+
+[Install]
+WantedBy=multi-user.target

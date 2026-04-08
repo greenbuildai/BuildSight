@@ -30,30 +30,58 @@ from pathlib import Path
 import cv2
 import numpy as np
 import torch
-import google.generativeai as genai
 from pydantic import BaseModel
 import requests as _requests
 from fastapi import FastAPI, File, Form, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from starlette.background import BackgroundTask
+
+try:
+    import google.generativeai as genai
+except ImportError:
+    genai = None
 
 # ── paths ──────────────────────────────────────────────────────────────────────
 ROOT = Path(__file__).parent.parent.parent   # BuildSight root
 
-SASTRA_V11 = ROOT / "weights" / "yolov11_buildsight_best.pt"
-SASTRA_V26 = ROOT / "weights" / "yolov26_buildsight_best.pt"
 
-LOCAL_BEST = (
+def _env_path(name: str, default: Path) -> Path:
+    value = os.environ.get(name)
+    return Path(value).expanduser() if value else default
+
+
+def _env_int(name: str, default: int) -> int:
+    value = os.environ.get(name)
+    return int(value) if value else default
+
+
+MODEL_DIR = _env_path("BUILDSIGHT_MODEL_DIR", ROOT / "weights")
+SASTRA_V11 = _env_path("BUILDSIGHT_MODEL_V11", MODEL_DIR / "yolov11_buildsight_best.pt")
+SASTRA_V26 = _env_path("BUILDSIGHT_MODEL_V26", MODEL_DIR / "yolov26_buildsight_best.pt")
+
+LOCAL_BEST = _env_path(
+    "BUILDSIGHT_LOCAL_MODEL",
     ROOT / "buildsight-base" / "basic yolo model" /
     "output" / "kaggle_working_all_outputs" /
-    "kaggle" / "working" / "runs" / "train" / "weights" / "best.pt"
+    "kaggle" / "working" / "runs" / "train" / "weights" / "best.pt",
 )
+
+RUNTIME_DIR = _env_path("BUILDSIGHT_RUNTIME_DIR", ROOT / "runtime")
+TMP_DIR = RUNTIME_DIR / "tmp"
+VIDEO_OUTPUT_DIR = RUNTIME_DIR / "video_outputs"
+
+for _path in (RUNTIME_DIR, TMP_DIR, VIDEO_OUTPUT_DIR):
+    _path.mkdir(parents=True, exist_ok=True)
 
 # ── device selection ───────────────────────────────────────────────────────────
 # Use CUDA if available (RTX 4050 confirmed); fall back to CPU gracefully.
 DEVICE   = "cuda:0" if torch.cuda.is_available() else "cpu"
 USE_HALF = DEVICE.startswith("cuda")   # FP16 only on GPU
+BACKEND_HOST = os.environ.get("BUILDSIGHT_HOST", "0.0.0.0")
+BACKEND_PORT = _env_int("BUILDSIGHT_PORT", 8000)
+BACKEND_LOG_LEVEL = os.environ.get("BUILDSIGHT_LOG_LEVEL", "info")
 
 # ── class schema ───────────────────────────────────────────────────────────────
 SASTRA_CLASSES = {0: "helmet", 1: "safety_vest", 2: "worker"}
@@ -227,13 +255,15 @@ else:
 AI_API_KEY = os.environ.get("GOOGLE_API_KEY")
 ai_model = None
 
-if AI_API_KEY:
+if AI_API_KEY and genai is not None:
     genai.configure(api_key=AI_API_KEY)
     ai_model = genai.GenerativeModel(
         "gemini-2.0-flash",
         system_instruction=TURNER_SYSTEM_PROMPT,
     )
     logger.info("Gemini fallback enabled. GOOGLE_API_KEY detected.")
+elif AI_API_KEY and genai is None:
+    logger.warning("GOOGLE_API_KEY present but google-generativeai is not installed. Gemini fallback disabled.")
 else:
     logger.warning("GOOGLE_API_KEY not found. Gemini fallback disabled.")
 
@@ -1191,6 +1221,8 @@ def health():
         "mode":     mode_name,
         "device":   DEVICE,
         "fp16":     USE_HALF,
+        "runtime_dir": str(RUNTIME_DIR),
+        "model_dir": str(MODEL_DIR),
         "classes":  list(cls_map.values()),
         "ensemble": model_v26 is not None,
         "turner_ai_enabled": mistral_enabled or (ai_model is not None),
@@ -1293,7 +1325,7 @@ async def detect_video(
 
     def _process() -> tuple[str, int, float]:
         suffix = Path(file.filename or "video.mp4").suffix or ".mp4"
-        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp_in:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix, dir=TMP_DIR) as tmp_in:
             tmp_in.write(data)
             in_path = tmp_in.name
 
@@ -1306,7 +1338,7 @@ async def detect_video(
         width  = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp_out:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4", dir=VIDEO_OUTPUT_DIR) as tmp_out:
             out_path = tmp_out.name
 
         writer = cv2.VideoWriter(
@@ -1361,7 +1393,7 @@ async def detect_video(
             "X-Device":           DEVICE,
             "X-Condition":        condition,
         },
-        background=None,
+        background=BackgroundTask(lambda p=out_path: Path(p).unlink(missing_ok=True)),
     )
 
 
@@ -1551,4 +1583,4 @@ async def ai_chat_stream(req: ChatRequest):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")
+    uvicorn.run(app, host=BACKEND_HOST, port=BACKEND_PORT, log_level=BACKEND_LOG_LEVEL)
