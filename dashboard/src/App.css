@@ -171,6 +171,7 @@ h1, h2, h3, h4, .display-font {
   grid-template-columns: auto 1fr;
   gap: 0.85rem;
   align-items: center;
+  margin-left: -0.2rem;
   padding-bottom: 1.25rem;
   border-bottom: 1px solid var(--color-border);
   cursor: pointer;
@@ -190,6 +191,10 @@ h1, h2, h3, h4, .display-font {
   border-radius: 6px;
   flex-shrink: 0;
   /* Remove blend mode — logo has a white bg that looks broken on dark surfaces */
+}
+
+.brand-text {
+  margin-left: -0.12rem;
 }
 
 /* Fallback text mark (not currently used, kept for reference) */
@@ -228,7 +233,7 @@ h1, h2, h3, h4, .display-font {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-weight: 550;
+  font-weight: 600;
   font-family: var(--font-display);
 }
 
@@ -2183,6 +2188,7 @@ h1, h2, h3, h4, .display-font {
 
 .app-shell--compact .sidebar__brand {
   gap: 0.6rem;
+  margin-left: -0.15rem;
   padding-bottom: 0.8rem;
 }
 
