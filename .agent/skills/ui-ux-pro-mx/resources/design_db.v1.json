@@ -1,0 +1,304 @@
+{
+  "version": "1.0.0",
+  "products": [
+    {
+      "id": "fintech",
+      "name": "Fintech",
+      "tags": ["finance", "trust", "metrics", "dark"],
+      "recommended_styles": ["glassmorphism", "oled-dark"],
+      "recommended_palettes": ["fintech-night", "fintech-day"],
+      "recommended_fonts": ["space-grotesk", "inter"],
+      "recommended_charts": ["candlestick", "area", "kpi-cards"],
+      "recommended_patterns": ["hero-metrics-cta", "sticky-command-rail"],
+      "ux_notes": [
+        "Keep risk and profit signals visually separated.",
+        "Use reduced motion for charts and live price transitions.",
+        "Surface trust indicators before conversion actions."
+      ]
+    },
+    {
+      "id": "saas",
+      "name": "SaaS",
+      "tags": ["b2b", "clean", "conversion", "light"],
+      "recommended_styles": ["minimalism", "aurora-ui"],
+      "recommended_palettes": ["saas-light", "saas-dark"],
+      "recommended_fonts": ["sora", "inter"],
+      "recommended_charts": ["line", "bar", "kpi-cards"],
+      "recommended_patterns": ["hero-proof-cta", "feature-grid"],
+      "ux_notes": [
+        "Make the primary CTA visible above the fold.",
+        "Prioritize clarity over density in pricing and feature comparison.",
+        "Keep dashboard summaries scannable in under five seconds."
+      ]
+    },
+    {
+      "id": "geoai",
+      "name": "GeoAI",
+      "tags": ["industrial", "mapping", "operations", "dark"],
+      "recommended_styles": ["glassmorphism", "tactical-hud", "oled-dark"],
+      "recommended_palettes": ["command-center", "industrial-dawn"],
+      "recommended_fonts": ["space-grotesk", "jetbrains-mono"],
+      "recommended_charts": ["heatmap", "timeline", "kpi-cards"],
+      "recommended_patterns": ["mission-control", "map-telemetry-split"],
+      "ux_notes": [
+        "Keep the map dominant and reserve side rails for actions and telemetry.",
+        "Use contrast and shape, not only color, for critical alerts.",
+        "Avoid cluttering the map with more than three simultaneous overlays."
+      ]
+    }
+  ],
+  "styles": [
+    {
+      "id": "glassmorphism",
+      "name": "Glassmorphism",
+      "description": "Translucent layers with restrained blur for tactical or premium surfaces.",
+      "tags": ["modern", "premium", "dark", "tactical"],
+      "products": ["fintech", "geoai"],
+      "themes": ["dark"],
+      "attributes": {
+        "blur": "16px",
+        "surface": "rgba(17, 19, 20, 0.72)",
+        "border": "1px solid rgba(255,255,255,0.08)"
+      }
+    },
+    {
+      "id": "oled-dark",
+      "name": "OLED Dark",
+      "description": "True-black foundations with bright telemetry accents and high signal separation.",
+      "tags": ["dark", "premium", "contrast"],
+      "products": ["fintech", "geoai"],
+      "themes": ["dark"],
+      "attributes": {
+        "background": "#06070A",
+        "contrast_target": "4.5:1",
+        "accent_mode": "neon restraint"
+      }
+    },
+    {
+      "id": "minimalism",
+      "name": "Minimalism",
+      "description": "Low-noise interfaces with strong hierarchy and measured whitespace.",
+      "tags": ["clean", "professional", "light", "saas"],
+      "products": ["saas"],
+      "themes": ["light", "dark"],
+      "attributes": {
+        "spacing": "relaxed",
+        "density": "low",
+        "borders": "hairline"
+      }
+    },
+    {
+      "id": "aurora-ui",
+      "name": "Aurora UI",
+      "description": "Soft gradients and depth layers suited to marketing-heavy SaaS surfaces.",
+      "tags": ["vibrant", "landing", "light", "marketing"],
+      "products": ["saas"],
+      "themes": ["light", "dark"],
+      "attributes": {
+        "gradient_mode": "radial",
+        "shadow": "soft",
+        "surface_style": "blurred gradient"
+      }
+    },
+    {
+      "id": "tactical-hud",
+      "name": "Tactical HUD",
+      "description": "Command-center framing, telemetry typography, and layered operational chrome.",
+      "tags": ["industrial", "dark", "control-center", "mapping"],
+      "products": ["geoai"],
+      "themes": ["dark"],
+      "attributes": {
+        "frames": "corner brackets",
+        "motion": "scan sweep",
+        "density": "high signal"
+      }
+    }
+  ],
+  "palettes": [
+    {
+      "id": "fintech-night",
+      "name": "Fintech Night",
+      "tags": ["fintech", "dark", "trust"],
+      "products": ["fintech"],
+      "themes": ["dark"],
+      "colors": {
+        "primary": "#3B82F6",
+        "secondary": "#A78BFA",
+        "cta": "#22C55E",
+        "background": "#0B1120",
+        "surface": "#111827",
+        "text": "#F8FAFC"
+      }
+    },
+    {
+      "id": "fintech-day",
+      "name": "Fintech Day",
+      "tags": ["fintech", "light", "clean"],
+      "products": ["fintech"],
+      "themes": ["light"],
+      "colors": {
+        "primary": "#2563EB",
+        "secondary": "#7C3AED",
+        "cta": "#16A34A",
+        "background": "#F8FAFC",
+        "surface": "#FFFFFF",
+        "text": "#0F172A"
+      }
+    },
+    {
+      "id": "saas-light",
+      "name": "SaaS Light",
+      "tags": ["saas", "light", "professional"],
+      "products": ["saas"],
+      "themes": ["light"],
+      "colors": {
+        "primary": "#0F766E",
+        "secondary": "#0EA5E9",
+        "cta": "#F97316",
+        "background": "#F5F7FB",
+        "surface": "#FFFFFF",
+        "text": "#0F172A"
+      }
+    },
+    {
+      "id": "saas-dark",
+      "name": "SaaS Dark",
+      "tags": ["saas", "dark", "b2b"],
+      "products": ["saas"],
+      "themes": ["dark"],
+      "colors": {
+        "primary": "#22C55E",
+        "secondary": "#06B6D4",
+        "cta": "#F59E0B",
+        "background": "#08111F",
+        "surface": "#102033",
+        "text": "#E2E8F0"
+      }
+    },
+    {
+      "id": "command-center",
+      "name": "Command Center",
+      "tags": ["geoai", "industrial", "dark", "operations"],
+      "products": ["geoai"],
+      "themes": ["dark"],
+      "colors": {
+        "primary": "#FF6A00",
+        "secondary": "#00B4D8",
+        "cta": "#00E676",
+        "background": "#05070B",
+        "surface": "#111418",
+        "text": "#E5EDF5"
+      }
+    },
+    {
+      "id": "industrial-dawn",
+      "name": "Industrial Dawn",
+      "tags": ["geoai", "industrial", "light"],
+      "products": ["geoai"],
+      "themes": ["light"],
+      "colors": {
+        "primary": "#C2410C",
+        "secondary": "#0369A1",
+        "cta": "#15803D",
+        "background": "#F7F6F2",
+        "surface": "#FFFFFF",
+        "text": "#1F2937"
+      }
+    }
+  ],
+  "fonts": [
+    {
+      "id": "space-grotesk",
+      "name": "Space Grotesk",
+      "tags": ["modern", "headline", "premium"],
+      "products": ["fintech", "geoai"]
+    },
+    {
+      "id": "inter",
+      "name": "Inter",
+      "tags": ["ui", "versatile", "readable"],
+      "products": ["fintech", "saas"]
+    },
+    {
+      "id": "jetbrains-mono",
+      "name": "JetBrains Mono",
+      "tags": ["data", "telemetry", "mono"],
+      "products": ["geoai"]
+    },
+    {
+      "id": "sora",
+      "name": "Sora",
+      "tags": ["saas", "friendly", "clean"],
+      "products": ["saas"]
+    }
+  ],
+  "charts": [
+    {
+      "id": "candlestick",
+      "name": "Candlestick",
+      "tags": ["fintech", "trading", "dark"]
+    },
+    {
+      "id": "area",
+      "name": "Area",
+      "tags": ["fintech", "trend", "saas"]
+    },
+    {
+      "id": "kpi-cards",
+      "name": "KPI Cards",
+      "tags": ["dashboard", "summary", "executive"]
+    },
+    {
+      "id": "line",
+      "name": "Line",
+      "tags": ["saas", "reporting", "trend"]
+    },
+    {
+      "id": "bar",
+      "name": "Bar",
+      "tags": ["saas", "comparison", "reporting"]
+    },
+    {
+      "id": "heatmap",
+      "name": "Heatmap",
+      "tags": ["geoai", "spatial", "risk"]
+    },
+    {
+      "id": "timeline",
+      "name": "Timeline",
+      "tags": ["geoai", "ops", "sequence"]
+    }
+  ],
+  "patterns": [
+    {
+      "id": "hero-metrics-cta",
+      "name": "Hero + Metrics + CTA",
+      "tags": ["fintech", "landing", "conversion"]
+    },
+    {
+      "id": "sticky-command-rail",
+      "name": "Sticky Command Rail",
+      "tags": ["fintech", "ops", "dense"]
+    },
+    {
+      "id": "hero-proof-cta",
+      "name": "Hero + Social Proof + CTA",
+      "tags": ["saas", "landing", "conversion"]
+    },
+    {
+      "id": "feature-grid",
+      "name": "Feature Grid",
+      "tags": ["saas", "marketing", "modular"]
+    },
+    {
+      "id": "mission-control",
+      "name": "Mission Control",
+      "tags": ["geoai", "operations", "command-center"]
+    },
+    {
+      "id": "map-telemetry-split",
+      "name": "Map + Telemetry Split",
+      "tags": ["geoai", "mapping", "dashboard"]
+    }
+  ]
+}

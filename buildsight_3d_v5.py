@@ -19,6 +19,7 @@ Run: python buildsight_3d_v5.py
 
 import plotly.graph_objects as go
 import numpy as np
+from pathlib import Path
 
 # ─── Site dimensions ───
 BW   = 18.90    # East-West  (62'-0")
@@ -503,6 +504,13 @@ print("    Legend items  → toggle zones on/off")
 print()
 print("Opening in browser...")
 
+root_output = Path(__file__).with_name("buildsight_3d_v5.html")
+dashboard_output = Path(__file__).resolve().parent / "dashboard" / "public" / "buildsight_3d_v5.html"
+
 fig.show()
-fig.write_html("buildsight_3d_v5.html")
-print("Saved: buildsight_3d_v5.html")
+fig.write_html(root_output)
+print(f"Saved: {root_output.name}")
+
+dashboard_output.parent.mkdir(parents=True, exist_ok=True)
+fig.write_html(dashboard_output)
+print(f"Synced dashboard asset: {dashboard_output}")

@@ -10,6 +10,7 @@ import { DetectionStatsProvider, useDetectionStats } from './DetectionStatsConte
 import { TurnerAssistant } from './components/TurnerAssistant'
 import { AnalyticsPage } from './components/AnalyticsPage'
 import { GeoAIPage } from './components/GeoAIPage'
+import { GodModePage } from './components/GodModePage'
 import { PageTransition } from './components/AnimatedLayout'
 
 /* Static fallback metrics — replaced by live data when detection is running */
@@ -84,7 +85,7 @@ const alerts: AlertItem[] = [
 
 
 
-type View = 'dashboard' | 'settings' | 'analytics' | 'geoai'
+type View = 'dashboard' | 'settings' | 'analytics' | 'geoai' | 'godMode'
 type DashboardMode = 'LIVE' | 'VIDEO' | 'IMAGE'
 
 function formatIstSnapshot() {
@@ -337,8 +338,8 @@ function AppInner() {
           <div className="sidebar__section">
             <p className="section-label">System</p>
             <button
-              className={`nav-link nav-link--settings ${view === 'settings' ? 'nav-link--active' : ''}`}
-              onClick={() => setView('settings')}
+              className={`nav-link nav-link--settings ${view === 'godMode' ? 'nav-link--active' : ''}`}
+              onClick={() => setView('godMode')}
             >
               God Mode
             </button>
@@ -485,7 +486,7 @@ function AppInner() {
               </button>
             </div>
           </header>
-          <section className="geoai-section">
+          <section className="geoai-section" style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, padding: 0, overflow: 'hidden' }}>
             <GeoAIPage />
           </section>
         </main>
@@ -516,6 +517,7 @@ function AppInner() {
           </section>
         </main>
       )}
+      {view === 'godMode' && <GodModePage onBack={() => setView('dashboard')} />}
       </PageTransition>
     </div>
 )

@@ -1,0 +1,66 @@
+{
+  "version": "1.0",
+  "styles": [
+    {
+      "id": "glassmorphism",
+      "name": "Glassmorphism",
+      "description": "Translucent layers with background medicinal blur.",
+      "tags": ["modern", "tactical", "industrial", "premium"],
+      "attributes": {
+        "blur": "16px",
+        "opacity": "0.7",
+        "border": "1px solid rgba(255,255,255,0.1)"
+      }
+    },
+    {
+      "id": "neumorphism",
+      "name": "Neumorphism",
+      "description": "Soft shadows and highlights creating an extruded plastic look.",
+      "tags": ["soft", "minimal", "tactile"],
+      "attributes": {
+        "shadow_light": "-5px -5px 10px #ffffff",
+        "shadow_dark": "5px 5px 10px #bebebe"
+      }
+    },
+    {
+      "id": "minimalism",
+      "name": "Minimalism",
+      "description": "Essentialism over decoration. High whitespace and clean lines.",
+      "tags": ["clean", "professional", "saas"],
+      "attributes": {
+        "spacing": "relaxed",
+        "contrast": "high"
+      }
+    },
+    {
+      "id": "brutalism",
+      "name": "Brutalism",
+      "description": "Raw, unpolished, and high-impact aesthetics.",
+      "tags": ["bold", "experimental", "web3"],
+      "attributes": {
+        "typography": "heavy",
+        "borders": "thick"
+      }
+    },
+    {
+      "id": "aurora-ui",
+      "name": "Aurora UI",
+      "description": "Soft, blurred gradients mimicking the polar lights.",
+      "tags": ["vibrant", "modern", "landing"],
+      "attributes": {
+        "gradients": "radial",
+        "blur": "large"
+      }
+    },
+    {
+      "id": "oled-dark",
+      "name": "OLED Dark",
+      "description": "True black #000000 foundations with vibrant neon accents.",
+      "tags": ["dark", "battery-efficient", "premium"],
+      "attributes": {
+        "background": "#000000",
+        "accent": "vibrant"
+      }
+    }
+  ]
+}

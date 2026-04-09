@@ -1,149 +1,375 @@
-import { motion } from 'framer-motion'
+import { useEffect, useMemo, useState } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
+import { GeoAIMap } from './GeoAIMap'
+import { GeoAI3DView } from './GeoAI3DView'
+import { GeoAIPlan2D } from './GeoAIPlan2D'
+import { GeoAIHUD } from './GeoAIHUD'
+import { useGeoAIWebSocket } from '../hooks/useGeoAIWebSocket'
+import type { GeoAIMode, GeoAIVisualMode } from '../types/geoai'
+import './GeoAIPage.css'
 
-/* ── GeoAI Placeholder Module ─────────────────────────────────────────────── */
-/* Provides visual placeholders for:                                          */
-/*   1. Heatmap Panel                                                        */
-/*   2. Zone Overlay                                                         */
-/*   3. Geofencing                                                           */
-/*   4. Risk Zone Visualization                                               */
-/*   5. Worker Movement Paths                                                 */
-/*   6. Incident Hotspot                                                      */
-/*                                                                             */
-/* These will connect to the backend /api/geoai/* endpoints once QGIS         */
-/* integration is complete.                                                    */
-/* ──────────────────────────────────────────────────────────────────────────── */
+const MODES: GeoAIMode[] = ['HEATMAP', '3D ZONES', 'TRACKING']
 
-const cardVariants = {
-  hidden: { opacity: 0, y: 16, scale: 0.98 },
-  visible: (i: number) => ({
-    opacity: 1, y: 0, scale: 1,
-    transition: { 
-      delay: i * 0.05, 
-      type: 'spring' as const,
-      stiffness: 260,
-      damping: 24
-    },
-  }),
+const MODE_META: Record<GeoAIMode, { label: string; detail: string; badge: string }> = {
+  HEATMAP: {
+    label: 'Live risk density',
+    detail: 'KDE-driven risk scoring across worker clusters, PPE loss, and zone pressure.',
+    badge: 'Spatial risk surface',
+  },
+  '3D ZONES': {
+    label: 'Vertical exposure model',
+    detail: 'Height-aware zone analysis for slab edges, parapets, and scaffold interfaces.',
+    badge: '3D compliance shell',
+  },
+  TRACKING: {
+    label: 'Movement intelligence',
+    detail: 'Worker path monitoring with status changes, dwell time, and rapid breach detection.',
+    badge: 'Trajectory telemetry',
+  },
 }
 
-const MODULES = [
-  {
-    id: 'heatmap',
-    icon: '🌡️',
-    title: 'Heatmap Panel',
-    subtitle: 'Worker Density & Activity Heat',
-    description: 'Real-time heatmap overlay showing worker density patterns across site zones. Connects to /api/geoai/heatmap for live spatial data.',
-    status: 'Awaiting QGIS Data',
-    endpoint: 'GET /api/geoai/heatmap',
-  },
-  {
-    id: 'zones',
-    icon: '📐',
-    title: 'Zone Overlay',
-    subtitle: 'Restricted & Active Zone Mapping',
-    description: 'Polygon overlays from GeoJSON — restricted areas, crane swing radii, material staging. Upload via /api/geoai/upload.',
-    status: 'Awaiting GeoJSON',
-    endpoint: 'GET /api/geoai/zones',
-  },
-  {
-    id: 'geofencing',
-    icon: '🚧',
-    title: 'Geofencing Engine',
-    subtitle: 'Virtual Perimeter Enforcement',
-    description: 'Geofence triggers when workers enter exclusion zones. Integrates with AlertLog for real-time breach notifications.',
-    status: 'Pending Integration',
-    endpoint: 'POST /api/geoai/geofence/check',
-  },
-  {
-    id: 'risk-zones',
-    icon: '⚠️',
-    title: 'Risk Zone Visualization',
-    subtitle: 'Dynamic Hazard Classification',
-    description: 'Color-coded risk zones (Low / Medium / High / Critical) based on incident history and proximity violations.',
-    status: 'Pending Analytics',
-    endpoint: 'GET /api/geoai/risk-zones',
-  },
-  {
-    id: 'movement',
-    icon: '🔄',
-    title: 'Worker Movement Paths',
-    subtitle: 'Temporal Trajectory Tracking',
-    description: 'Worker path reconstruction from sequential detection coordinates. Visualizes flow patterns and dwell-time anomalies.',
-    status: 'Awaiting Tracker',
-    endpoint: 'GET /api/geoai/worker-tracks',
-  },
-  {
-    id: 'hotspots',
-    icon: '🔴',
-    title: 'Incident Hotspots',
-    subtitle: 'Historical Incident Clustering',
-    description: 'Cluster analysis of PPE violations mapped to spatial coordinates. Identifies repeat-offender zones for targeted inspections.',
-    status: 'Awaiting Data',
-    endpoint: 'GET /api/geoai/violations/map',
-  },
+const VISUAL_MODES: { id: GeoAIVisualMode; label: string; icon: string }[] = [
+  { id: 'tactical', label: 'Tactical', icon: '📍' },
+  { id: 'satellite', label: 'Satellite', icon: '🛰️' },
+  { id: 'plan2d', label: '2D Plan', icon: '📐' },
+  { id: 'view3d', label: '3D', icon: '🧊' }
 ]
 
-export function GeoAIPage() {
+const LS_MAP_MODE = 'buildsight_geoai_mode'
+const LS_VISUAL_MODE = 'buildsight_geoai_visual_mode'
+const LS_SHOW_ZONES = 'buildsight_geoai_zones'
+const LS_SHOW_LABELS = 'buildsight_geoai_labels'
+const LS_SHOW_FOV = 'buildsight_geoai_fov'
+const LS_HEATMAP_OPACITY = 'buildsight_geoai_hm_opacity'
+
+function loadLS<T>(key: string, fallback: T): T {
+  try {
+    const value = localStorage.getItem(key)
+    return value !== null ? JSON.parse(value) : fallback
+  } catch {
+    return fallback
+  }
+}
+
+function AnimatedCounter({ value }: { value: number | string }) {
   return (
-    <div className="geoai-page">
-      {/* Headers are provided by App.tsx topbar */}
+    <motion.div
+      key={value}
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -10 }}
+      transition={{ duration: 0.2 }}
+    >
+      {value}
+    </motion.div>
+  )
+}
+
+export function GeoAIPage() {
+  const { data, connectionState, cycle, acknowledgeEvent, resolveEvent } = useGeoAIWebSocket()
+
+  const [mode, setMode] = useState<GeoAIMode>(() => loadLS(LS_MAP_MODE, 'HEATMAP'))
+  const [visualMode, setVisualMode] = useState<GeoAIVisualMode>(() => {
+    const val = loadLS(LS_VISUAL_MODE, 'tactical')
+    return ['tactical', 'satellite', 'plan2d', 'view3d'].includes(val) ? val : 'tactical'
+  })
+  
+  const [showZones, setShowZones] = useState(() => loadLS(LS_SHOW_ZONES, true))
+  const [showLabels, setShowLabels] = useState(() => loadLS(LS_SHOW_LABELS, true))
+  const [showCameraFOV, setShowCameraFOV] = useState(() => loadLS(LS_SHOW_FOV, true))
+  const [heatmapOpacity, setHeatmapOpacity] = useState(() => loadLS(LS_HEATMAP_OPACITY, 0.65))
+  
+  const [isTransitioning, setIsTransitioning] = useState(false)
+
+  useEffect(() => { localStorage.setItem(LS_MAP_MODE, JSON.stringify(mode)) }, [mode])
+  useEffect(() => { localStorage.setItem(LS_VISUAL_MODE, JSON.stringify(visualMode)) }, [visualMode])
+  useEffect(() => { localStorage.setItem(LS_SHOW_ZONES, JSON.stringify(showZones)) }, [showZones])
+  useEffect(() => { localStorage.setItem(LS_SHOW_LABELS, JSON.stringify(showLabels)) }, [showLabels])
+  useEffect(() => { localStorage.setItem(LS_SHOW_FOV, JSON.stringify(showCameraFOV)) }, [showCameraFOV])
+  useEffect(() => { localStorage.setItem(LS_HEATMAP_OPACITY, JSON.stringify(heatmapOpacity)) }, [heatmapOpacity])
 
 
-      {/* ── Map Canvas Placeholder ────────────────────────────────────────── */}
-      <motion.div
-        className="panel geoai-map-canvas"
-        initial={{ opacity: 0, scale: 0.98 }}
-        animate={{ opacity: 1, scale: 1 }}
-        transition={{ duration: 0.4 }}
-      >
-        <div className="geoai-map-placeholder">
-          <div className="geoai-map-grid">
-            {/* Simulated grid dots */}
-            {Array.from({ length: 120 }, (_, i) => (
-              <motion.div
-                key={i}
-                className="geoai-grid-dot"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 0.15 + Math.random() * 0.25 }}
-                transition={{ delay: i * 0.008, duration: 0.5 }}
-              />
-            ))}
+  const showHeatmap = mode === 'HEATMAP'
+  const showWorkers = mode === 'TRACKING' || mode === 'HEATMAP'
+  const isDegraded = data?.kpi?.system_degraded || connectionState === 'demo'
+
+  const activeWorkers = data?.kpi?.active_workers ?? data?.site_stats?.total_workers ?? 0
+  const criticalAlerts = data?.kpi?.critical_alerts ?? 0
+  const escalatedAlerts = data?.kpi?.escalated_alerts ?? 0
+  const compliance = data?.kpi?.ppe_compliance ?? 100
+  const avgRisk = data?.kpi?.avg_site_risk ?? 0
+  const mapperStatus = data?.kpi?.mapper_status ?? 'syncing'
+  const eventCount = data?.events?.length ?? 0
+  const cellCount = data?.cells?.length ?? 0
+
+  const topWorker = useMemo(() => {
+    const workers = data?.workers ?? []
+    return [...workers].sort((left, right) => {
+      const rank = { CRITICAL: 4, HIGH: 3, MODERATE: 2, LOW: 1 }
+      return (rank[right.risk] ?? 0) - (rank[left.risk] ?? 0)
+    })[0]
+  }, [data?.workers])
+
+  const topEvent = useMemo(() => {
+    const events = data?.events ?? []
+    const priorityRank = { CRITICAL: 3, WARNING: 2, INFO: 1 }
+    return [...events].sort((left, right) => {
+      return (priorityRank[right.priority] ?? 0) - (priorityRank[left.priority] ?? 0)
+    })[0]
+  }, [data?.events])
+
+  const activeStatusLabel = useMemo(() => {
+    if (visualMode === 'tactical') return 'Tactical 2D Active'
+    if (visualMode === 'satellite') return 'Satellite Hybrid Active'
+    if (visualMode === 'plan2d') return '2D Plan Active'
+    return '3D View Active'
+  }, [visualMode])
+
+  const handleVisualModeChange = (nextMode: GeoAIVisualMode) => {
+    if (nextMode === visualMode) return
+    setIsTransitioning(true)
+    setTimeout(() => {
+      setVisualMode(nextMode)
+      setTimeout(() => setIsTransitioning(false), 300)
+    }, 200)
+  }
+
+  return (
+    <div className="geoai-page geoai-page--active">
+      <div className="hud-scanline" />
+      <div className="scanline-sweep" />
+      <div className="geoai-page__glow geoai-page__glow--left" />
+      <div className="geoai-page__glow geoai-page__glow--right" />
+
+      <section className="geoai-hero">
+        <div className="geoai-hero__intro">
+          <div className="geoai-hero__copy">
+            <p className="geoai-eyebrow">Spatial Intelligence Command Center</p>
+            <h1>GeoAI Mission Control</h1>
+            <p className="geoai-hero__lede">
+              BuildSight fuses live worker telemetry, risk zoning, and height-aware site context into an OLED tactical surface.
+            </p>
           </div>
-          <div className="geoai-map-overlay-text">
-            <span className="geoai-map-icon">🗺️</span>
-            <h4>QGIS Integration Ready</h4>
-            <p>Upload GeoJSON to activate spatial overlays</p>
-            <p className="geoai-map-hint">Supports: Polygons · Points · LineStrings · MultiPolygons</p>
+
+          <div className="geoai-hero__pills">
+            <span className={`geoai-status-chip geoai-status-chip--${connectionState}`}>
+              {connectionState === 'live' ? 'Engine live' : connectionState}
+            </span>
+            <span className={`geoai-status-chip ${isDegraded ? 'geoai-status-chip--degraded' : 'geoai-status-chip--healthy'}`}>
+              {isDegraded ? 'Fallback posture' : 'Full fidelity'}
+            </span>
+            <span className="geoai-status-chip">{cycle ? `Cycle ${cycle} synced` : 'Waiting for stream'}</span>
+          </div>
+        </div>
+
+        <div className="geoai-hero__summary">
+          <article className="geoai-summary-card">
+            <span className="geoai-summary-card__label">Mode focus</span>
+            <strong>{MODE_META[mode].label}</strong>
+            <p>{MODE_META[mode].detail}</p>
+            <span className="geoai-summary-card__foot">{MODE_META[mode].badge}</span>
+          </article>
+
+          <article className="geoai-summary-card">
+            <span className="geoai-summary-card__label">Operational hotspot</span>
+            <strong>{topWorker ? `Worker W${topWorker.worker_id ?? '?'}` : 'No active worker'}</strong>
+            <p>
+              {topWorker
+                ? `${topWorker.risk} risk in ${topWorker.zone.replace(/_/g, ' ')} at ${topWorker.height_m.toFixed(1)}m.`
+                : 'Telemetry feed stable.'}
+            </p>
+            <span className="geoai-summary-card__foot">{topWorker?.status ?? 'Monitoring'}</span>
+          </article>
+
+          <article className="geoai-summary-card">
+            <span className="geoai-summary-card__label">Escalation posture</span>
+            <strong>{topEvent ? topEvent.event_type.replace(/_/g, ' ') : 'No live escalation'}</strong>
+            <p>{topEvent?.message ?? 'Critical events surface here automatically.'}</p>
+            <span className="geoai-summary-card__foot">{mapperStatus}</span>
+          </article>
+        </div>
+      </section>
+
+      {/* KPI STRIP */}
+      <section className="geoai-kpi-strip">
+        <div className="geoai-kpi-item">
+          <span className="geoai-kpi-label">Site status</span>
+          <span className="geoai-kpi-val geoai-kpi-val--status">
+            <span className="geoai-status-pulse" />
+            Operational
+          </span>
+        </div>
+        <div className="geoai-kpi-item">
+          <span className="geoai-kpi-val"><AnimatedCounter value={activeWorkers} /></span>
+          <span className="geoai-kpi-label">Active workers</span>
+        </div>
+        <div className="geoai-kpi-item geoai-kpi-item--critical">
+          <span className="geoai-kpi-val"><AnimatedCounter value={criticalAlerts} /></span>
+          <span className="geoai-kpi-label">Critical risks</span>
+        </div>
+        <div className="geoai-kpi-item geoai-kpi-item--escalated">
+          <span className="geoai-kpi-val"><AnimatedCounter value={escalatedAlerts} /></span>
+          <span className="geoai-kpi-label">Escalated</span>
+        </div>
+        <div className="geoai-kpi-item">
+          <span className="geoai-kpi-val" style={{ color: compliance >= 80 ? 'var(--color-safe)' : 'var(--color-warning)' }}>
+            <AnimatedCounter value={`${compliance.toFixed(0)}%`} />
+          </span>
+          <span className="geoai-kpi-label">PPE compliance</span>
+        </div>
+        <div className="geoai-kpi-item">
+          <span className="geoai-kpi-val" style={{ color: avgRisk > 0.5 ? 'var(--color-danger)' : 'var(--color-safe)' }}>
+            <AnimatedCounter value={avgRisk.toFixed(2)} />
+          </span>
+          <span className="geoai-kpi-label">Indexed risk</span>
+        </div>
+        <div className="geoai-kpi-item">
+          <span className="geoai-kpi-val"><AnimatedCounter value={eventCount} /></span>
+          <span className="geoai-kpi-label">Events</span>
+        </div>
+        <div className="geoai-kpi-item">
+          <span className="geoai-kpi-val"><AnimatedCounter value={cellCount} /></span>
+          <span className="geoai-kpi-label">Risk cells</span>
+        </div>
+      </section>
+
+      {/* RENDER STAGE + HUD */}
+      <motion.div
+        className="geoai-layout"
+        initial={{ opacity: 0, y: 18 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.45, ease: 'easeOut' }}
+      >
+        <div className="geoai-layout__map">
+          <div className={`geoai-map-transition-layer ${isTransitioning ? 'geoai-map-transition-layer--active' : ''}`} />
+
+          {/* Floating Switcher Controls */}
+          <div className="geoai-floating-controls">
+            <div className="geoai-floating-switcher">
+              {VISUAL_MODES.map((v, index) => (
+                <div key={v.id} style={{ display: 'flex', alignItems: 'center' }}>
+                  <button
+                    className={`geoai-floating-btn ${visualMode === v.id ? 'geoai-floating-btn--active' : ''}`}
+                    onClick={() => handleVisualModeChange(v.id)}
+                  >
+                    <span className="geoai-floating-icon">{v.icon}</span>
+                    <span className="geoai-floating-lbl">{v.label}</span>
+                  </button>
+                  {index < VISUAL_MODES.length - 1 && <div className="geoai-floating-divider" />}
+                </div>
+              ))}
+            </div>
+            <div className="geoai-mode-status">
+              <span className="geoai-status-pulse" style={{ width: 6, height: 6 }}/>
+              {activeStatusLabel}
+            </div>
+          </div>
+
+          <div className="geoai-map-shell">
+            <div className="geoai-map-shell__toolbar">
+              <div className="geoai-map-shell__title">
+                <span className="geoai-map-shell__eyebrow">Primary scene</span>
+                <strong>
+                  {visualMode === 'tactical' ? 'Tactical Overview' 
+                  : visualMode === 'satellite' ? 'Satellite Overview' 
+                  : visualMode === 'plan2d' ? '2D CAD Plan'
+                  : '3D Volumetric Scene'}
+                </strong>
+              </div>
+
+              <div className="geoai-map-shell__readouts">
+                <span>{MODE_META[mode].label}</span>
+                <span>{showLabels ? 'Labels ON' : 'Labels OFF'}</span>
+                {(visualMode === 'tactical' || visualMode === 'satellite') && <span>Heat {Math.round(heatmapOpacity * 100)}%</span>}
+              </div>
+            </div>
+
+            <div className="geoai-map-shell__stage">
+              <AnimatePresence mode="wait">
+                {visualMode === 'view3d' ? (
+                  <motion.div key="view3d" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} style={{height:'100%', width:'100%'}}>
+                    <GeoAI3DView data={data} showLabels={showLabels} showCameraFOV={showCameraFOV} onReturn2D={() => handleVisualModeChange('tactical')} />
+                  </motion.div>
+                ) : visualMode === 'plan2d' ? (
+                  <motion.div key="plan2d" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} style={{height:'100%', width:'100%'}}>
+                    <GeoAIPlan2D showLabels={showLabels} />
+                  </motion.div>
+                ) : (
+                  <motion.div key="map2d" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} style={{height:'100%', width:'100%'}}>
+                    <GeoAIMap
+                      data={data}
+                      showZones={showZones}
+                      showLabels={showLabels}
+                      showCameraFOV={showCameraFOV}
+                      showHeatmap={showHeatmap}
+                      showWorkers={showWorkers}
+                      heatmapOpacity={heatmapOpacity}
+                      viewMode={visualMode}
+                    />
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+
+            <div className="geoai-map-legend">
+              <div className="geoai-map-legend__item">
+                <span className="geoai-map-legend__swatch geoai-map-legend__swatch--critical" />
+                Critical exposure
+              </div>
+              <div className="geoai-map-legend__item">
+                <span className="geoai-map-legend__swatch geoai-map-legend__swatch--warning" />
+                Elevated risk
+              </div>
+              <div className="geoai-map-legend__item">
+                <span className="geoai-map-legend__swatch geoai-map-legend__swatch--safe" />
+                Compliant activity
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="geoai-layout__hud">
+          <div className="geoai-hud-shell">
+            <div className="geoai-command-card" style={{ padding: '1rem', borderBottom: '1px solid var(--color-border)', background: 'rgba(10,12,16,0.6)' }}>
+              <p className="geoai-command-card__eyebrow" style={{ marginBottom: '0.6rem' }}>Map overlays</p>
+              <div className="geoai-control-grid" style={{ gridTemplateColumns: 'minmax(0, 1fr) auto auto', gap: '0.8rem', alignItems: 'center' }}>
+                <label className="geoai-slider-card" style={{ minHeight: 'auto', padding: '0.5rem', background: 'transparent', border: 'none' }}>
+                  <div style={{ display:'flex', justifyContent:'space-between' }}>
+                    <span className="geoai-slider-card__label">Heat opacity</span>
+                    <strong>{Math.round(heatmapOpacity * 100)}%</strong>
+                  </div>
+                  <input
+                    type="range"
+                    min={0.2} max={0.95} step={0.05}
+                    value={heatmapOpacity}
+                    onChange={(e) => setHeatmapOpacity(Number(e.target.value))}
+                    disabled={visualMode === 'view3d'}
+                  />
+                </label>
+                <div style={{ display: 'flex', gap: '1rem' }}>
+                  <label className="geoai-toggle-card" style={{ minHeight: 'auto', padding: 0, border: 'none', background: 'transparent' }}>
+                    <input type="checkbox" checked={showZones} onChange={e => setShowZones(e.target.checked)} />
+                    <span>Zones</span>
+                  </label>
+                  <label className="geoai-toggle-card" style={{ minHeight: 'auto', padding: 0, border: 'none', background: 'transparent' }}>
+                    <input type="checkbox" checked={showLabels} onChange={e => setShowLabels(e.target.checked)} />
+                    <span>Labels</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <GeoAIHUD
+              data={data}
+              connectionState={connectionState}
+              cycle={cycle}
+              activeMode={visualMode}
+              onAcknowledge={acknowledgeEvent}
+              onResolve={resolveEvent}
+            />
           </div>
         </div>
       </motion.div>
-
-      {/* ── Module Cards ─────────────────────────────────────────────────── */}
-      <div className="geoai-modules-grid">
-        {MODULES.map((mod, i) => (
-          <motion.div
-            className="panel geoai-module-card"
-            key={mod.id}
-            custom={i}
-            initial="hidden"
-            animate="visible"
-            variants={cardVariants}
-          >
-            <div className="geoai-module-card__header">
-              <span className="geoai-module-icon">{mod.icon}</span>
-              <div>
-                <h4>{mod.title}</h4>
-                <span className="geoai-module-subtitle">{mod.subtitle}</span>
-              </div>
-            </div>
-            <p className="geoai-module-desc">{mod.description}</p>
-            <div className="geoai-module-footer">
-              <code className="geoai-endpoint">{mod.endpoint}</code>
-              <span className="geoai-module-status">{mod.status}</span>
-            </div>
-          </motion.div>
-        ))}
-      </div>
     </div>
   )
 }

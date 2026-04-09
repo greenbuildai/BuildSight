@@ -155,3 +155,15 @@ attachment.txt
 =
 *.db
 !dashboard/backend/buildsight.db
+
+# =========================
+# BuildSight Specific Exclusions
+# =========================
+files_extracted/
+buildsight_2d3d_toggle.*
+buildsight_2d_plan.*
+generate_geojson.py
+rotate_geojson.py
+buildsight_zones_complete.geojson
+dashboard/public/buildsight_*.html
+dashboard/public/*.geojson

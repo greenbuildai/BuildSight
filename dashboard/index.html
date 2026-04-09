@@ -9,6 +9,8 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,400..600;1,400..600&family=Inter:wght@400;500&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+    <!-- Leaflet CSS (GeoAI map) -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
     <meta name="description" content="BuildSight AI — Real-time AI-powered construction safety monitoring and PPE detection command dashboard." />
     <meta name="theme-color" content="#0b0d0e" />
     <title>BuildSight AI — Command Dashboard</title>
@@ -16,5 +18,9 @@
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
+    <!-- GeoAI: Leaflet + heatmap.js (deferred — loads after React bundle) -->
+    <script defer src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+    <script defer src="https://cdnjs.cloudflare.com/ajax/libs/heatmap.js/2.0.5/heatmap.min.js"></script>
+    <script defer src="https://cdnjs.cloudflare.com/ajax/libs/leaflet-heatmap/1.0.0/leaflet-heatmap.js"></script>
   </body>
 </html>
