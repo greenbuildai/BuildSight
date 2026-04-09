@@ -4,8 +4,8 @@ import type { HeatmapUpdatePayload, ZoneCollection, ZoneFeature } from '../types
 const SITE_CENTER: [number, number] = [10.81662, 78.66891]
 const INITIAL_ZOOM = 19
 const TARGET_OVERLAY_ROTATION_DEG = 85.0
-const OVERLAY_OFFSET_METERS: [number, number] = [10.5, -2.5]
-const OVERLAY_SCALE = 0.80
+const OVERLAY_OFFSET_METERS: [number, number] = [8.5, -4.5]
+const OVERLAY_SCALE = 0.72
 const CAMERA_OFFSET_METERS: [number, number] = [1.2, 0]
 const CAMERA_FOV_SCALE = 1.16
 const LABEL_OFFSET_METERS: Record<string, [number, number]> = {

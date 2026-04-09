@@ -101,7 +101,8 @@ SITE_CONFIG = {
     "width_m":  18.90,
     "depth_m":   9.75,
     "sw_lat":   10.81658333,
-    "sw_lon":   78.66883333,
+    "sw_lon":   78.66873333,  # Deep shift West to bring all icons inside fully
+    "rotation_deg": 85.0,
 }
 
 
@@ -232,11 +233,20 @@ class SpatialMapper:
         return wx, wy
 
     def world_to_gps(self, wx: float, wy: float) -> Tuple[float, float]:
-        """Convert site meters to GPS (lat, lon)."""
+        """Convert site meters to GPS (lat, lon) with rotation."""
+        # Apply rotation around SW corner
+        angle_rad = math.radians(self.site.get("rotation_deg", 0))
+        cos_a = math.cos(angle_rad)
+        sin_a = math.sin(angle_rad)
+        
+        # Rotate local meters
+        rx = wx * cos_a - wy * sin_a
+        ry = wx * sin_a + wy * cos_a
+        
         m_lat = 110574.0
         m_lon = 111319.0 * math.cos(math.radians(self.site["sw_lat"]))
-        lat = self.site["sw_lat"] + wy / m_lat
-        lon = self.site["sw_lon"] + wx / m_lon
+        lat = self.site["sw_lat"] + ry / m_lat
+        lon = self.site["sw_lon"] + rx / m_lon
         return lat, lon
 
     def pixel_to_gps(self, px: float, py: float) -> Tuple[float, float]:
