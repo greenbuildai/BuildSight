@@ -3,9 +3,9 @@ import type { HeatmapUpdatePayload, ZoneCollection, ZoneFeature } from '../types
 
 const SITE_CENTER: [number, number] = [10.81662, 78.66891]
 const INITIAL_ZOOM = 19
-const TARGET_OVERLAY_ROTATION_DEG = 85
-const OVERLAY_OFFSET_METERS: [number, number] = [-3.6, 0]
-const OVERLAY_SCALE = 0.9
+const TARGET_OVERLAY_ROTATION_DEG = 85.0
+const OVERLAY_OFFSET_METERS: [number, number] = [10.5, -2.5]
+const OVERLAY_SCALE = 0.80
 const CAMERA_OFFSET_METERS: [number, number] = [1.2, 0]
 const CAMERA_FOV_SCALE = 1.16
 const LABEL_OFFSET_METERS: Record<string, [number, number]> = {
@@ -17,18 +17,18 @@ const LABEL_OFFSET_METERS: Record<string, [number, number]> = {
 
 const RISK_COLORS: Record<string, string> = {
   CRITICAL: '#ff3b3b',
-  HIGH:     '#ff7b00',
+  HIGH: '#ff7b00',
   MODERATE: '#ffd600',
-  LOW:      '#00e676',
-  none:     '#00b4d8',
+  LOW: '#00e676',
+  none: '#00b4d8',
 }
 
 const RISK_FILL_OPACITY: Record<string, number> = {
   CRITICAL: 0.35,
-  HIGH:     0.25,
+  HIGH: 0.25,
   MODERATE: 0.18,
-  LOW:      0.12,
-  none:     0.08,
+  LOW: 0.12,
+  none: 0.08,
 }
 
 interface GeoAIMapProps {
@@ -140,13 +140,13 @@ function computeOverlayCenter(features: ZoneFeature[]): LatLngTuple {
   return SITE_CENTER
 }
 
-export function GeoAIMap({ 
-  data, 
-  showZones, 
-  showLabels, 
-  showCameraFOV, 
-  showHeatmap, 
-  showWorkers, 
+export function GeoAIMap({
+  data,
+  showZones,
+  showLabels,
+  showCameraFOV,
+  showHeatmap,
+  showWorkers,
   heatmapOpacity = 0.65,
   viewMode
 }: GeoAIMapProps) {
@@ -236,7 +236,7 @@ export function GeoAIMap({
     })
 
     const isSat = viewMode === 'satellite'
-    
+
     satelliteTileRef.current = L.tileLayer(SATELLITE_URL, {
       maxZoom: 22,
       subdomains: 'abcd',
@@ -305,7 +305,7 @@ export function GeoAIMap({
 
       satelliteTileRef.current.setOpacity(startSatOpacity + (targetSatOpacity - startSatOpacity) * progress)
       tacticalTileRef.current.setOpacity(startTacOpacity + (targetTacOpacity - startTacOpacity) * progress)
-      
+
       if (progress === 1) {
         clearInterval(fadeInterval)
       }
