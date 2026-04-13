@@ -1,0 +1,308 @@
+/* DynamicZoneEditor — dark command-centre theme */
+
+.dze {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  font-family: 'Inter', sans-serif;
+  gap: 8px;
+}
+
+/* ── Header ─────────────────────────────────────────────────────────────── */
+.dze__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.08);
+}
+
+.dze__title {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #e2e8f0;
+}
+
+.dze__header-actions {
+  display: flex;
+  gap: 6px;
+}
+
+/* ── Buttons ─────────────────────────────────────────────────────────────── */
+.dze__btn {
+  padding: 3px 10px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  border-radius: 4px;
+  border: 1px solid;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.dze__btn--add {
+  background: rgba(255, 106, 0, 0.10);
+  color: #ff8c44;
+  border-color: rgba(255, 106, 0, 0.35);
+}
+.dze__btn--add:hover {
+  background: rgba(255, 106, 0, 0.20);
+}
+
+.dze__btn--sam {
+  background: rgba(0, 229, 255, 0.08);
+  color: #00c4d8;
+  border-color: rgba(0, 229, 255, 0.25);
+}
+.dze__btn--sam:hover:not(:disabled) {
+  background: rgba(0, 229, 255, 0.15);
+}
+.dze__btn--sam:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.dze__btn--loading {
+  opacity: 0.6;
+}
+
+.dze__btn--save {
+  width: 100%;
+  padding: 6px;
+  background: rgba(255, 106, 0, 0.12);
+  color: #ff8c44;
+  border-color: rgba(255, 106, 0, 0.4);
+}
+.dze__btn--save:hover:not(:disabled) {
+  background: rgba(255, 106, 0, 0.22);
+}
+.dze__btn--save:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ── Info / error strips ─────────────────────────────────────────────────── */
+.dze__info {
+  font-size: 0.68rem;
+  color: rgba(226, 232, 240, 0.4);
+  background: rgba(226, 232, 240, 0.04);
+  border: 1px solid rgba(226, 232, 240, 0.08);
+  border-radius: 4px;
+  padding: 5px 8px;
+  flex-shrink: 0;
+}
+
+.dze__info code {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.65rem;
+  color: rgba(255, 106, 0, 0.7);
+}
+
+.dze__error {
+  flex-shrink: 0;
+  font-size: 0.68rem;
+  color: #ff5555;
+  background: rgba(255, 85, 85, 0.08);
+  border: 1px solid rgba(255, 85, 85, 0.2);
+  border-radius: 4px;
+  padding: 5px 8px;
+}
+
+/* ── Create form ─────────────────────────────────────────────────────────── */
+.dze__form {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: rgba(226, 232, 240, 0.03);
+  border: 1px solid rgba(226, 232, 240, 0.08);
+  border-radius: 6px;
+  padding: 10px;
+}
+
+.dze__form-row {
+  display: flex;
+  gap: 6px;
+}
+
+.dze__input,
+.dze__select {
+  background: rgba(226, 232, 240, 0.04);
+  border: 1px solid rgba(226, 232, 240, 0.12);
+  border-radius: 4px;
+  padding: 5px 8px;
+  font-size: 0.73rem;
+  color: #e2e8f0;
+  outline: none;
+  transition: border-color 0.15s;
+  width: 100%;
+}
+
+.dze__input::placeholder { color: rgba(226, 232, 240, 0.25); }
+.dze__input:focus,
+.dze__select:focus { border-color: rgba(255, 106, 0, 0.45); }
+
+.dze__select {
+  flex: 1;
+  appearance: none;
+  cursor: pointer;
+}
+
+.dze__select option {
+  background: #111314;
+  color: #e2e8f0;
+}
+
+/* ── Zone list ───────────────────────────────────────────────────────────── */
+.dze__list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.dze__list::-webkit-scrollbar { width: 4px; }
+.dze__list::-webkit-scrollbar-track { background: transparent; }
+.dze__list::-webkit-scrollbar-thumb {
+  background: rgba(226, 232, 240, 0.12);
+  border-radius: 2px;
+}
+
+.dze__empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px 0;
+  font-size: 0.72rem;
+  color: rgba(226, 232, 240, 0.3);
+  text-align: center;
+  line-height: 1.5;
+}
+
+.dze__spinner {
+  width: 18px;
+  height: 18px;
+  border: 2px solid rgba(226, 232, 240, 0.1);
+  border-top-color: rgba(226, 232, 240, 0.5);
+  border-radius: 50%;
+  animation: dze-spin 0.8s linear infinite;
+}
+
+@keyframes dze-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ── Zone row ────────────────────────────────────────────────────────────── */
+.dze__zone {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  background: rgba(226, 232, 240, 0.03);
+  border: 1px solid rgba(226, 232, 240, 0.07);
+  border-radius: 6px;
+  padding: 8px;
+  transition: opacity 0.2s;
+}
+
+.dze__zone--inactive {
+  opacity: 0.45;
+}
+
+.dze__zone-color {
+  flex-shrink: 0;
+  width: 4px;
+  height: 100%;
+  min-height: 36px;
+  border-radius: 2px;
+  align-self: stretch;
+}
+
+.dze__zone-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.dze__zone-name {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #e2e8f0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dze__zone-meta {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.62rem;
+  color: rgba(226, 232, 240, 0.45);
+  letter-spacing: 0.03em;
+}
+
+.dze__zone-risk {
+  font-weight: 700;
+}
+
+.dze__zone-desc {
+  font-size: 0.65rem;
+  color: rgba(226, 232, 240, 0.3);
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── Zone action buttons ─────────────────────────────────────────────────── */
+.dze__zone-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+  align-items: center;
+}
+
+.dze__icon-btn {
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.65rem;
+  border-radius: 4px;
+  border: 1px solid rgba(226, 232, 240, 0.12);
+  background: transparent;
+  cursor: pointer;
+  transition: all 0.15s;
+  color: rgba(226, 232, 240, 0.5);
+}
+
+.dze__icon-btn--on {
+  color: #00e676;
+  border-color: rgba(0, 230, 118, 0.3);
+}
+
+.dze__icon-btn--off {
+  color: rgba(226, 232, 240, 0.3);
+}
+
+.dze__icon-btn--del {
+  color: rgba(255, 85, 85, 0.5);
+  border-color: rgba(255, 85, 85, 0.15);
+}
+
+.dze__icon-btn--del:hover {
+  color: #ff5555;
+  background: rgba(255, 85, 85, 0.1);
+  border-color: rgba(255, 85, 85, 0.35);
+}
+
+.dze__icon-btn:hover:not(.dze__icon-btn--del) {
+  background: rgba(226, 232, 240, 0.08);
+}

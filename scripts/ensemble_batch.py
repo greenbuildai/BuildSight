@@ -41,11 +41,6 @@ GPU = 0
 PRE_CONF = 0.07          # loose gate — let both models contribute weak evidence
 MODEL_WEIGHTS = [0.55, 0.45]   # YOLOv11=0.55, YOLOv26=0.45
 
-# Early-exit: skip YOLOv26 when YOLOv11 is uniformly high-confidence
-# If ALL v11 detections >= this threshold → treat v11 result as final, skip v26
-EARLY_EXIT_CONF = 0.65
-EARLY_EXIT_MIN_DETS = 1   # must have at least this many detections to early-exit
-
 # Per-class WBF IoU thresholds
 WBF_IOU = {
     0: 0.45,   # helmet — small, position varies; looser merge
@@ -227,42 +222,21 @@ def run():
                 continue
             img_h, img_w = image.shape[:2]
 
-            # ── Step 1: YOLOv11 inference ───────────────────────────────────
-            r11 = model_v11.predict(str(img_path), device=GPU,
-                                    verbose=False, conf=PRE_CONF, iou=0.35)[0]
-            boxes11, scores11, labels11 = [], [], []
-            for box in (r11.boxes or []):
-                xy = box.xyxy[0].cpu().numpy().tolist()
-                boxes11.append(xy)
-                scores11.append(float(box.conf[0]))
-                labels11.append(int(box.cls[0]))
-
-            # ── Early-exit: skip YOLOv26 if v11 is uniformly confident ──────
-            early_exit = (
-                len(scores11) >= EARLY_EXIT_MIN_DETS
-                and all(s >= EARLY_EXIT_CONF for s in scores11)
-            )
-
-            if early_exit:
-                all_preds = [(boxes11, scores11, labels11)]
-            else:
-                r26 = model_v26.predict(str(img_path), device=GPU,
-                                        verbose=False, conf=PRE_CONF, iou=0.35)[0]
-                boxes26, scores26, labels26 = [], [], []
-                for box in (r26.boxes or []):
+            # ── Step 1: Infer both models at loose gate ─────────────────────
+            all_preds = []
+            for model in (model_v11, model_v26):
+                result = model.predict(str(img_path), device=GPU,
+                                       verbose=False, conf=PRE_CONF, iou=0.35)[0]
+                boxes, scores, labels = [], [], []
+                for box in (result.boxes or []):
                     xy = box.xyxy[0].cpu().numpy().tolist()
-                    boxes26.append(xy)
-                    scores26.append(float(box.conf[0]))
-                    labels26.append(int(box.cls[0]))
-                all_preds = [
-                    (boxes11, scores11, labels11),
-                    (boxes26, scores26, labels26),
-                ]
+                    boxes.append(xy)
+                    scores.append(float(box.conf[0]))
+                    labels.append(int(box.cls[0]))
+                all_preds.append((boxes, scores, labels))
 
-            # ── Step 2: Per-class WBF fusion (or pass-through if early-exit) ─
-            fused = wbf_fuse(all_preds, img_w, img_h) if not early_exit \
-                else [{"box": b, "score": s, "cls": l}
-                      for b, s, l in zip(boxes11, scores11, labels11)]
+            # ── Step 2: Per-class WBF fusion ────────────────────────────────
+            fused = wbf_fuse(all_preds, img_w, img_h)
 
             # ── Step 3: Adaptive 8-rule post-processing ─────────────────────
             final_boxes, stats = apply_all_rules(fused, condition, img_w, img_h)

@@ -1,0 +1,620 @@
+{
+  "type": "FeatureCollection",
+  "name": "BuildSight GeoAI Risk Zones",
+  "crs": {
+    "type": "name",
+    "properties": {
+      "name": "EPSG:4326"
+    }
+  },
+  "metadata": {
+    "project": "BuildSight",
+    "site": "Maran Constructions G+1 Residential",
+    "location": "Tiruchirappalli (Trichy), Tamil Nadu",
+    "sw_corner_gps": "10.81658333°N, 78.66883333°E",
+    "site_width_m": 18.9,
+    "site_depth_m": 9.75,
+    "building_height_m": 6.096,
+    "camera_height_m": 7.62,
+    "compliance": [
+      "BOCW Act 1996",
+      "NBC 2016",
+      "IS 4130",
+      "IS 3521",
+      "IS 3696"
+    ],
+    "company": "Green Build AI",
+    "igbc_ap": true,
+    "version": "3.0",
+    "generated": "2026-04-08",
+    "crs": "EPSG:4326 (WGS84)",
+    "coordinate_system": "Longitude,Latitude,Elevation(m)",
+    "height_zones": {
+      "LOW": "0.00–1.52m (ground level)",
+      "MODERATE": "1.52–3.05m (mid floor)",
+      "HIGH": "3.05–4.88m (upper floor)",
+      "CRITICAL": "4.88–6.10m (roof/parapet edge)"
+    },
+    "risk_formula": "Risk = 0.35×Density + 0.30×PPE + 0.20×Height + 0.15×Movement",
+    "total_features": 15,
+    "rotation_deg": 85.0,
+    "rotation_note": "All coordinates rotated 85.0° counter-clockwise from axis-aligned to match real-world building orientation"
+  },
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "zone": "site_boundary",
+        "risk": "none",
+        "alert": false,
+        "alert_level": "",
+        "description": "Full construction site boundary (3m buffer). Detections outside = ignored.",
+        "z_base_m": 0.0,
+        "z_top_m": 6.096,
+        "height_m": 6.096,
+        "bocw_clause": "BOCW §2 — Site boundary definition",
+        "nbc_clause": "NBC 2016 Part 7 §3.1"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              78.66887084,
+              10.8165399,
+              0.0
+            ],
+            [
+              78.66889069,
+              10.81676273,
+              0.0
+            ],
+            [
+              78.66874623,
+              10.81677514,
+              0.0
+            ],
+            [
+              78.66872638,
+              10.81655231,
+              0.0
+            ],
+            [
+              78.66887084,
+              10.8165399,
+              0.0
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "zone": "high_risk_scaffolding",
+        "risk": "HIGH",
+        "alert": true,
+        "alert_level": "CRITICAL",
+        "description": "Scaffolding and outer wall perimeter band. 2m outside to 1m inside building walls.",
+        "z_base_m": 0.0,
+        "z_top_m": 6.096,
+        "height_m": 6.096,
+        "bocw_clause": "BOCW §40 — Scaffolding safety; BOCW §36 — Fall protection",
+        "nbc_clause": "NBC 2016 Part 7 §8.2 — Scaffolding requirements"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              78.66886247,
+              10.81654964,
+              0.0
+            ],
+            [
+              78.66888073,
+              10.81675456,
+              0.0
+            ],
+            [
+              78.66875461,
+              10.8167654,
+              0.0
+            ],
+            [
+              78.66873635,
+              10.81656048,
+              0.0
+            ],
+            [
+              78.66886247,
+              10.81654964,
+              0.0
+            ]
+          ],
+          [
+            [
+              78.66883735,
+              10.81657885,
+              0.0
+            ],
+            [
+              78.66885082,
+              10.81673009,
+              0.0
+            ],
+            [
+              78.66877973,
+              10.8167362,
+              0.0
+            ],
+            [
+              78.66876626,
+              10.81658496,
+              0.0
+            ],
+            [
+              78.66883735,
+              10.81657885,
+              0.0
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "zone": "high_risk_staircase",
+        "risk": "CRITICAL",
+        "alert": true,
+        "alert_level": "CRITICAL",
+        "description": "Staircase zone NW corner. UP arrow on plan. Highest fall risk throughout all heights.",
+        "z_base_m": 0.0,
+        "z_top_m": 6.096,
+        "height_m": 6.096,
+        "bocw_clause": "BOCW §40 — Staircase guardrails; BOCW §41 — Ladder safety",
+        "nbc_clause": "NBC 2016 Part 7 §8.3 — Stairway safety"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              78.66877738,
+              10.81657498,
+              0.0
+            ],
+            [
+              78.66878127,
+              10.81661865,
+              0.0
+            ],
+            [
+              78.66876018,
+              10.81662047,
+              0.0
+            ],
+            [
+              78.66875629,
+              10.8165768,
+              0.0
+            ],
+            [
+              78.66877738,
+              10.81657498,
+              0.0
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "zone": "moderate_risk_interior",
+        "risk": "MODERATE",
+        "alert": true,
+        "alert_level": "WARNING",
+        "description": "Interior construction zone. Active masonry, formwork, reinforcement work.",
+        "z_base_m": 0.0,
+        "z_top_m": 4.877,
+        "height_m": 4.877,
+        "bocw_clause": "BOCW §25 — Safe working conditions; BOCW §38 — PPE mandatory",
+        "nbc_clause": "NBC 2016 Part 7 §4.1 — Working platforms"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              78.66883735,
+              10.81657885,
+              0.0
+            ],
+            [
+              78.66884903,
+              10.81671004,
+              0.0
+            ],
+            [
+              78.66877795,
+              10.81671615,
+              0.0
+            ],
+            [
+              78.66876626,
+              10.81658496,
+              0.0
+            ],
+            [
+              78.66883735,
+              10.81657885,
+              0.0
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "zone": "low_risk_parking",
+        "risk": "LOW",
+        "alert": true,
+        "alert_level": "ADVISORY",
+        "description": "Car parking and site support area. Lower activity zone.",
+        "z_base_m": 0.0,
+        "z_top_m": 6.096,
+        "height_m": 6.096,
+        "bocw_clause": "BOCW §25 — General site safety",
+        "nbc_clause": "NBC 2016 Part 7 §2.1"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              78.6688586,
+              10.81671372,
+              0.0
+            ],
+            [
+              78.66886078,
+              10.81673824,
+              0.0
+            ],
+            [
+              78.66877135,
+              10.81674593,
+              0.0
+            ],
+            [
+              78.66876917,
+              10.81672141,
+              0.0
+            ],
+            [
+              78.6688586,
+              10.81671372,
+              0.0
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "zone": "height_zone_low",
+        "risk": "LOW",
+        "alert": true,
+        "alert_level": "ADVISORY",
+        "description": "Ground level zone (0–1.52m). Workers walking, material handling.",
+        "z_base_m": 0.0,
+        "z_top_m": 1.524,
+        "height_m": 1.524,
+        "bocw_clause": "BOCW §25 — General site safety",
+        "nbc_clause": "NBC 2016 Part 7",
+        "height_zone": true,
+        "elevation_range": "0.00–1.52m"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              78.66884572,
+              10.81656911,
+              0.0
+            ],
+            [
+              78.66886078,
+              10.81673824,
+              0.0
+            ],
+            [
+              78.66877135,
+              10.81674593,
+              0.0
+            ],
+            [
+              78.66875629,
+              10.8165768,
+              0.0
+            ],
+            [
+              78.66884572,
+              10.81656911,
+              0.0
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "zone": "height_zone_moderate",
+        "risk": "MODERATE",
+        "alert": true,
+        "alert_level": "WARNING",
+        "description": "Mid first floor zone (1.52–3.05m). Masonry work, wall construction.",
+        "z_base_m": 1.524,
+        "z_top_m": 3.05,
+        "height_m": 1.526,
+        "bocw_clause": "BOCW §38 — PPE mandatory at elevation; BOCW §36 — Edge protection",
+        "nbc_clause": "NBC 2016 Part 7 §4.1",
+        "height_zone": true,
+        "elevation_range": "1.52–3.05m"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              78.66884572,
+              10.81656911,
+              1.524
+            ],
+            [
+              78.66886078,
+              10.81673824,
+              1.524
+            ],
+            [
+              78.66877135,
+              10.81674593,
+              1.524
+            ],
+            [
+              78.66875629,
+              10.8165768,
+              1.524
+            ],
+            [
+              78.66884572,
+              10.81656911,
+              1.524
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "zone": "height_zone_high",
+        "risk": "HIGH",
+        "alert": true,
+        "alert_level": "CRITICAL",
+        "description": "Upper first floor zone (3.05–4.88m). Near slab level — formwork, reinforcement.",
+        "z_base_m": 3.05,
+        "z_top_m": 4.877,
+        "height_m": 1.827,
+        "bocw_clause": "BOCW §40 — Fall protection mandatory; BOCW §36 — Edge guards",
+        "nbc_clause": "NBC 2016 Part 7 §8.2",
+        "height_zone": true,
+        "elevation_range": "3.05–4.88m"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              78.66884572,
+              10.81656911,
+              3.05
+            ],
+            [
+              78.66886078,
+              10.81673824,
+              3.05
+            ],
+            [
+              78.66877135,
+              10.81674593,
+              3.05
+            ],
+            [
+              78.66875629,
+              10.8165768,
+              3.05
+            ],
+            [
+              78.66884572,
+              10.81656911,
+              3.05
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "zone": "height_zone_critical",
+        "risk": "CRITICAL",
+        "alert": true,
+        "alert_level": "CRITICAL",
+        "description": "Roof slab and parapet edge zone (4.88–6.10m). Maximum fall risk. Worker detected at this level in CCTV (2025-12-29 17:05).",
+        "z_base_m": 4.877,
+        "z_top_m": 6.096,
+        "height_m": 1.219,
+        "bocw_clause": "BOCW §40 — Mandatory safety nets/harness; BOCW §41 — Parapet required",
+        "nbc_clause": "NBC 2016 Part 7 §8.4 — Roof work safety",
+        "height_zone": true,
+        "elevation_range": "4.88–6.10m",
+        "cctv_evidence": "Worker observed at this level 2025-12-29 17:05"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              78.66884572,
+              10.81656911,
+              4.877
+            ],
+            [
+              78.66886078,
+              10.81673824,
+              4.877
+            ],
+            [
+              78.66877135,
+              10.81674593,
+              4.877
+            ],
+            [
+              78.66875629,
+              10.8165768,
+              4.877
+            ],
+            [
+              78.66884572,
+              10.81656911,
+              4.877
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "zone": "building_corner_SW",
+        "risk": "none",
+        "alert": false,
+        "alert_level": "",
+        "description": "Building corner SW — Kitchen / given GPS reference",
+        "type": "building_corner",
+        "corner": "SW",
+        "world_x_m": 0,
+        "world_y_m": 0,
+        "lat": 10.81658333,
+        "lon": 78.66883333,
+        "z_base_m": 0,
+        "z_top_m": 6.096,
+        "height_m": 6.096,
+        "bocw_clause": "",
+        "nbc_clause": ""
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          78.66884572,
+          10.81656911,
+          0
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "zone": "building_corner_SE",
+        "risk": "none",
+        "alert": false,
+        "alert_level": "",
+        "description": "Building corner SE — Car parking east corner",
+        "type": "building_corner",
+        "corner": "SE",
+        "world_x_m": 18.9,
+        "world_y_m": 0,
+        "lat": 10.81658333,
+        "lon": 78.66900618,
+        "z_base_m": 0,
+        "z_top_m": 6.096,
+        "height_m": 6.096,
+        "bocw_clause": "",
+        "nbc_clause": ""
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          78.66886078,
+          10.81673824,
+          0
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "zone": "building_corner_NE",
+        "risk": "none",
+        "alert": false,
+        "alert_level": "",
+        "description": "Building corner NE — Common toilet NE corner",
+        "type": "building_corner",
+        "corner": "NE",
+        "world_x_m": 18.9,
+        "world_y_m": 9.75,
+        "lat": 10.81667151,
+        "lon": 78.66900618,
+        "z_base_m": 0,
+        "z_top_m": 6.096,
+        "height_m": 6.096,
+        "bocw_clause": "",
+        "nbc_clause": ""
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          78.66877135,
+          10.81674593,
+          0
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "zone": "building_corner_NW",
+        "risk": "none",
+        "alert": false,
+        "alert_level": "",
+        "description": "Building corner NW — Staircase NW corner",
+        "type": "building_corner",
+        "corner": "NW",
+        "world_x_m": 0,
+        "world_y_m": 9.75,
+        "lat": 10.81667151,
+        "lon": 78.66883333,
+        "z_base_m": 0,
+        "z_top_m": 6.096,
+        "height_m": 6.096,
+        "bocw_clause": "",
+        "nbc_clause": ""
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          78.66875629,
+          10.8165768,
+          0
+        ]
+      }
+    }
+  ]
+}

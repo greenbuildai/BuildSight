@@ -3,7 +3,8 @@
     "allow": [
       "Bash(dir:*)",
       "Bash(set \"GEMINI_KEY_1=AIzaSyAuHrM7wY5T3r7HYDIBPc9us0ai-lK76_E\")",
-      "Bash(set \"GEMINI_KEY_2=AIzaSyDMq7A5DZDKM4hJbLNeS2-qpTsNJ7HCmiA\")"
+      "Bash(set \"GEMINI_KEY_2=AIzaSyDMq7A5DZDKM4hJbLNeS2-qpTsNJ7HCmiA\")",
+      "Bash(.venv/Scripts/python.exe -c ':*)"
     ]
   }
 }

@@ -8,13 +8,13 @@ PURPOSE:
   pipeline (buildsight_pipeline_v2.py) and the heatmap engine.
 
   Components:
-    • SpatialMapper     — Pixel ↔ GPS coordinate transformation
-    • DwellTracker      — Worker stationarity detection (30s/60s/120s)
-    • GeofenceMonitor   — Zone boundary breach detection
-    • StatusClassifier  — Rolling risk classification (Safe/AtRisk/Critical)
-    • EscalationGuard   — Unresolved alert escalation with SLA timers
-    • EventDispatcher   — Unified event bus for the timeline
-    • PostGISBridge     — Async DB writer with DemoFallback ring buffer
+    * SpatialMapper     - Pixel <-> GPS coordinate transformation
+    * DwellTracker      - Worker stationarity detection (30s/60s/120s)
+    * GeofenceMonitor   - Zone boundary breach detection
+    * StatusClassifier  - Rolling risk classification (Safe/AtRisk/Critical)
+    * EscalationGuard   - Unresolved alert escalation with SLA timers
+    * EventDispatcher   - Unified event bus for the timeline
+    * PostGISBridge     - Async DB writer with DemoFallback ring buffer
 
 Author: BuildSight / Green Build AI
 """
@@ -37,15 +37,15 @@ from uuid import uuid4
 
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s — %(message)s",
+    format="%(asctime)s [%(levelname)s] %(name)s - %(message)s",
     datefmt="%H:%M:%S",
 )
 log = logging.getLogger("BuildSight.Intelligence")
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
+# ===============================================================================
 #  Enumerations & Constants
-# ═══════════════════════════════════════════════════════════════════════════════
+# ===============================================================================
 
 class EventPriority(str, Enum):
     INFO     = "INFO"
@@ -97,13 +97,16 @@ DEFAULT_ESCALATION_THRESHOLD_S = 300
 DEFAULT_AUTO_EXPIRE_S = 1800
 
 # Site reference coordinates (from module3_homography_calibrate.py)
-SITE_CONFIG = {
-    "width_m":  18.90,
-    "depth_m":   9.75,
-    "sw_lat":   10.81658333,
-    "sw_lon":   78.66873333,  # Deep shift West to bring all icons inside fully
-    "rotation_deg": 85.0,
-}
+# Site reference coordinates imported from shared utility
+try:
+    from dashboard.backend.geoai.utils.spatial_mapper import SpatialMapper, SITE_CONFIG
+except ImportError:
+    # Manual fallback for standalone execution outside dashboard context
+    import sys
+    import os
+    sys.path.append(os.path.join(os.path.dirname(__file__), "dashboard", "backend"))
+    from geoai.utils.spatial_mapper import SpatialMapper, SITE_CONFIG
+
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -180,88 +183,9 @@ class WorkerTrack:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-#  SpatialMapper — Pixel to GPS transformation
-# ═══════════════════════════════════════════════════════════════════════════════
-
-class SpatialMapper:
-    """
-    Transforms pixel coordinates from CCTV frames into site-local meters
-    and GPS coordinates using a homography matrix.
-    
-    If no calibrated matrix is available, uses a simple linear fallback
-    based on the camera frame dimensions and known building footprint.
-    """
-
-    def __init__(
-        self,
-        homography_path: Optional[str] = None,
-        frame_width: int = 1920,
-        frame_height: int = 1080,
-        site_config: Optional[dict] = None,
-    ):
-        self.site = site_config or SITE_CONFIG
-        self.H: Optional[np.ndarray] = None
-        self.frame_w = frame_width
-        self.frame_h = frame_height
-        self.calibrated = False
-
-        if homography_path:
-            try:
-                self.H = np.load(homography_path)
-                self.calibrated = True
-                log.info(f"SpatialMapper: Loaded calibration from {homography_path}")
-            except Exception as e:
-                log.warning(f"SpatialMapper: Could not load {homography_path}: {e}")
-
-        if not self.calibrated:
-            log.info("SpatialMapper: Using linear fallback (no homography)")
-
-    def pixel_to_world(self, px: float, py: float) -> Tuple[float, float]:
-        """Convert pixel (x, y) to site-local meters (world_x, world_y)."""
-        if self.calibrated and self.H is not None:
-            pt = np.array([[[px, py]]], dtype=np.float32)
-            world = cv2.perspectiveTransform(pt, self.H)
-            wx, wy = float(world[0][0][0]), float(world[0][0][1])
-        else:
-            # Linear fallback: assume camera covers the whole site
-            wx = (px / self.frame_w) * self.site["width_m"]
-            wy = (1.0 - py / self.frame_h) * self.site["depth_m"]
-
-        # Clamp to site boundaries
-        wx = max(0, min(self.site["width_m"], wx))
-        wy = max(0, min(self.site["depth_m"], wy))
-        return wx, wy
-
-    def world_to_gps(self, wx: float, wy: float) -> Tuple[float, float]:
-        """Convert site meters to GPS (lat, lon) with rotation."""
-        # Apply rotation around SW corner
-        angle_rad = math.radians(self.site.get("rotation_deg", 0))
-        cos_a = math.cos(angle_rad)
-        sin_a = math.sin(angle_rad)
-        
-        # Rotate local meters
-        rx = wx * cos_a - wy * sin_a
-        ry = wx * sin_a + wy * cos_a
-        
-        m_lat = 110574.0
-        m_lon = 111319.0 * math.cos(math.radians(self.site["sw_lat"]))
-        lat = self.site["sw_lat"] + ry / m_lat
-        lon = self.site["sw_lon"] + rx / m_lon
-        return lat, lon
-
-    def pixel_to_gps(self, px: float, py: float) -> Tuple[float, float]:
-        """Direct pixel → GPS conversion."""
-        wx, wy = self.pixel_to_world(px, py)
-        return self.world_to_gps(wx, wy)
-
-    @property
-    def status(self) -> str:
-        return "CALIBRATED" if self.calibrated else "LINEAR_FALLBACK"
-
-
-# ═══════════════════════════════════════════════════════════════════════════════
 #  DwellTracker — Worker stationarity detection
 # ═══════════════════════════════════════════════════════════════════════════════
+
 
 class DwellTracker:
     """
@@ -1037,6 +961,72 @@ class IntelligenceEngine:
             if now - t.last_seen < 30 and t.risk_scores:
                 all_scores.extend(t.risk_scores)
         return round(sum(all_scores) / len(all_scores), 3) if all_scores else 0.0
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#  SAMZoneAnalyzer — Interactive Foundation Model Analysis
+# ═══════════════════════════════════════════════════════════════════════════════
+
+class SAMZoneAnalyzer:
+    """
+    Integrates Segment Anything Model (SAM) for interactive site analysis.
+    Converts pixel-space segments into world-space polygons with area metrics.
+    """
+
+    def __init__(self, mapper: SpatialMapper):
+        self.mapper = mapper
+
+    def enrich_segment(self, coords_norm: List[List[float]]) -> Dict[str, Any]:
+        """
+        Enrich a normalized SAM segment with world-space metrics using high-precision projection.
+        
+        Args:
+            coords_norm: List of [x, y] coordinates in [0, 1] space.
+            
+        Returns:
+            Dict containing area, centroid, bounding box, and GPS polygon.
+        """
+        try:
+            img_w = self.mapper.frame_w
+            img_h = self.mapper.frame_h
+
+            # 1. Convert normalized [0,1] back to pixel coords then to world meters
+            pixels = [(c[0] * img_w, c[1] * img_h) for c in coords_norm]
+            world_pts = [self.mapper.pixel_to_world(px, py) for px, py in pixels]
+            
+            # 2. Calculate planar area (metrics)
+            # Shoelace formula in local meter space
+            area = 0.5 * abs(sum(
+                world_pts[i][0] * world_pts[i+1][1] - world_pts[i+1][0] * world_pts[i][1]
+                for i in range(len(world_pts) - 1)
+            ))
+
+            # 3. Convert all to GPS for GeoJSON delivery
+            gps_pts = []
+            for wx, wy in world_pts:
+                lat, lon = self.mapper.world_to_gps(wx, wy)
+                gps_pts.append([lon, lat]) # GeoJSON uses [lng, lat]
+
+            # 4. Use mapper's high-level poly metric helper for consistency
+            gps_lats_lons = [[p[1], p[0]] for p in gps_pts]
+            metrics = self.mapper.calculate_polygon_metrics(gps_lats_lons)
+
+            return {
+                "area_m2": round(area, 2),
+                "gps_polygon": gps_pts,
+                "centroid_gps": metrics["centroid_gps"],
+                "bbox_gps": metrics["bbox_gps"],
+                "extracted_at": datetime.now().isoformat()
+            }
+        except Exception as e:
+            log.error(f"SAMZoneAnalyzer.enrich_segment error: {e}")
+            return {
+                "area_m2": 0.0,
+                "gps_polygon": [],
+                "centroid_gps": [0,0],
+                "bbox_gps": [],
+                "error": str(e)
+            }
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

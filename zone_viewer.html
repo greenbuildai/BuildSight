@@ -1,0 +1,1036 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BuildSight â€” Zone Viewer</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      background: #0a0e17;
+      color: #e0e0e0;
+    }
+    #header {
+      background: linear-gradient(135deg, #0f1923 0%, #1a2a3a 100%);
+      padding: 14px 24px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      border-bottom: 1px solid rgba(0, 255, 136, 0.15);
+      box-shadow: 0 2px 20px rgba(0,0,0,0.4);
+    }
+    #header h1 {
+      font-size: 20px;
+      font-weight: 700;
+      background: linear-gradient(90deg, #00ff88, #00ccff);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      letter-spacing: 1px;
+    }
+    #header .badge {
+      font-size: 11px;
+      background: rgba(0,255,136,0.12);
+      color: #00ff88;
+      padding: 3px 10px;
+      border-radius: 12px;
+      border: 1px solid rgba(0,255,136,0.25);
+      letter-spacing: 0.5px;
+    }
+    #header .site-info {
+      margin-left: auto;
+      font-size: 12px;
+      color: #8899aa;
+    }
+    #map {
+      width: 100%;
+      height: calc(100vh - 52px);
+    }
+
+    /* Legend */
+    .legend {
+      background: rgba(10, 14, 23, 0.92);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 12px;
+      padding: 16px;
+      font-size: 12px;
+      line-height: 1.8;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+      min-width: 210px;
+    }
+    .legend h4 {
+      margin-bottom: 10px;
+      font-size: 13px;
+      font-weight: 700;
+      color: #00ff88;
+      letter-spacing: 0.8px;
+      text-transform: uppercase;
+      border-bottom: 1px solid rgba(0,255,136,0.15);
+      padding-bottom: 8px;
+    }
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 4px;
+    }
+    .legend-color {
+      width: 16px;
+      height: 16px;
+      border-radius: 3px;
+      border: 1px solid rgba(255,255,255,0.15);
+      flex-shrink: 0;
+    }
+
+    /* Info panel */
+    .info-panel {
+      background: rgba(10, 14, 23, 0.92);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 12px;
+      padding: 16px;
+      font-size: 12px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+      min-width: 280px;
+      max-width: 320px;
+    }
+    .info-panel h4 {
+      font-size: 14px;
+      font-weight: 700;
+      color: #00ccff;
+      margin-bottom: 8px;
+    }
+    .info-panel .detail {
+      margin-bottom: 4px;
+      color: #bbb;
+    }
+    .info-panel .detail strong {
+      color: #e0e0e0;
+    }
+
+    /* Tooltip styling */
+    .zone-tooltip {
+      background: rgba(10, 14, 23, 0.95) !important;
+      border: 1px solid rgba(0, 255, 136, 0.3) !important;
+      color: #e0e0e0 !important;
+      border-radius: 8px !important;
+      padding: 8px 12px !important;
+      font-size: 12px !important;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.5) !important;
+    }
+    .zone-tooltip .zone-name {
+      font-weight: 700;
+      color: #00ff88;
+      font-size: 13px;
+      margin-bottom: 4px;
+    }
+    .leaflet-tooltip-top:before,
+    .leaflet-tooltip-bottom:before,
+    .leaflet-tooltip-left:before,
+    .leaflet-tooltip-right:before {
+      border-top-color: rgba(10, 14, 23, 0.95) !important;
+    }
+  </style>
+</head>
+<body>
+  <div id="header">
+    <h1>BUILDSIGHT</h1>
+    <span class="badge">ZONE VIEWER</span>
+    <span class="badge">TRIAL v3.0</span>
+    <span class="site-info">Maran Constructions G+1 â€” Thanjavur, TN Â· 18.9m Ã— 9.75m</span>
+  </div>
+  <div id="map"></div>
+
+  <script>
+    // â”€â”€â”€ Color Map â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    const RISK_COLORS = {
+      'CRITICAL': '#ff1744',
+      'HIGH':     '#ff6d00',
+      'MODERATE': '#ffab00',
+      'LOW':      '#00e676',
+      'none':     '#42a5f5',
+    };
+
+    const ZONE_COLORS = {
+      'site_boundary':           { fill: '#42a5f5', stroke: '#64b5f6', weight: 2.5, dash: '8 4' },
+      'high_risk_scaffolding':   { fill: '#ff6d00', stroke: '#ff9100', weight: 2 },
+      'high_risk_staircase':     { fill: '#ff1744', stroke: '#ff5252', weight: 2 },
+      'moderate_risk_interior':  { fill: '#ffab00', stroke: '#ffd600', weight: 1.5 },
+      'low_risk_parking':        { fill: '#00e676', stroke: '#69f0ae', weight: 1.5 },
+      'height_zone_low':         { fill: '#00e676', stroke: '#a5d6a7', weight: 1, dash: '4 4' },
+      'height_zone_moderate':    { fill: '#ffab00', stroke: '#ffe082', weight: 1, dash: '4 4' },
+      'height_zone_high':        { fill: '#ff6d00', stroke: '#ffab40', weight: 1, dash: '4 4' },
+      'height_zone_critical':    { fill: '#ff1744', stroke: '#ff8a80', weight: 1, dash: '4 4' },
+      'camera_fov_CAM01':        { fill: '#7c4dff', stroke: '#b388ff', weight: 1.5, dash: '6 3' },
+    };
+
+    // â”€â”€â”€ GeoJSON data (inline) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    const geojsonData = {
+  "type": "FeatureCollection",
+  "name": "BuildSight GeoAI Risk Zones",
+  "crs": {
+    "type": "name",
+    "properties": {
+      "name": "EPSG:4326"
+    }
+  },
+  "metadata": {
+    "project": "BuildSight",
+    "site": "Maran Constructions G+1 Residential",
+    "location": "Tiruchirappalli (Trichy), Tamil Nadu",
+    "sw_corner_gps": "10.81658333°N, 78.66883333°E",
+    "site_width_m": 18.9,
+    "site_depth_m": 9.75,
+    "building_height_m": 6.096,
+    "camera_height_m": 7.62,
+    "compliance": [
+      "BOCW Act 1996",
+      "NBC 2016",
+      "IS 4130",
+      "IS 3521",
+      "IS 3696"
+    ],
+    "company": "Green Build AI",
+    "igbc_ap": true,
+    "version": "3.0",
+    "generated": "2026-04-08",
+    "crs": "EPSG:4326 (WGS84)",
+    "coordinate_system": "Longitude,Latitude,Elevation(m)",
+    "height_zones": {
+      "LOW": "0.00–1.52m (ground level)",
+      "MODERATE": "1.52–3.05m (mid floor)",
+      "HIGH": "3.05–4.88m (upper floor)",
+      "CRITICAL": "4.88–6.10m (roof/parapet edge)"
+    },
+    "risk_formula": "Risk = 0.35×Density + 0.30×PPE + 0.20×Height + 0.15×Movement",
+    "total_features": 15,
+    "rotation_deg": 85.0,
+    "rotation_note": "All coordinates rotated 85.0° counter-clockwise from axis-aligned to match real-world building orientation"
+  },
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "zone": "site_boundary",
+        "risk": "none",
+        "alert": false,
+        "alert_level": "",
+        "description": "Full construction site boundary (3m buffer). Detections outside = ignored.",
+        "z_base_m": 0.0,
+        "z_top_m": 6.096,
+        "height_m": 6.096,
+        "bocw_clause": "BOCW §2 — Site boundary definition",
+        "nbc_clause": "NBC 2016 Part 7 §3.1"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              78.6690193,
+              10.81671698,
+              0.0
+            ],
+            [
+              78.66879503,
+              10.81667813,
+              0.0
+            ],
+            [
+              78.66882021,
+              10.81653786,
+              0.0
+            ],
+            [
+              78.66904448,
+              10.81657671,
+              0.0
+            ],
+            [
+              78.6690193,
+              10.81671698,
+              0.0
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "zone": "high_risk_scaffolding",
+        "risk": "HIGH",
+        "alert": true,
+        "alert_level": "CRITICAL",
+        "description": "Scaffolding and outer wall perimeter band. 2m outside to 1m inside building walls.",
+        "z_base_m": 0.0,
+        "z_top_m": 6.096,
+        "height_m": 6.096,
+        "bocw_clause": "BOCW §40 — Scaffolding safety; BOCW §36 — Fall protection",
+        "nbc_clause": "NBC 2016 Part 7 §8.2 — Scaffolding requirements"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              78.66901188,
+              10.81670652,
+              0.0
+            ],
+            [
+              78.66880564,
+              10.81667079,
+              0.0
+            ],
+            [
+              78.66882763,
+              10.81654833,
+              0.0
+            ],
+            [
+              78.66903387,
+              10.81658406,
+              0.0
+            ],
+            [
+              78.66901188,
+              10.81670652,
+              0.0
+            ]
+          ],
+          [
+            [
+              78.66898966,
+              10.81667512,
+              0.0
+            ],
+            [
+              78.66883745,
+              10.81664876,
+              0.0
+            ],
+            [
+              78.66884984,
+              10.81657973,
+              0.0
+            ],
+            [
+              78.66900205,
+              10.81660609,
+              0.0
+            ],
+            [
+              78.66898966,
+              10.81667512,
+              0.0
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "zone": "high_risk_staircase",
+        "risk": "CRITICAL",
+        "alert": true,
+        "alert_level": "CRITICAL",
+        "description": "Staircase zone NW corner. UP arrow on plan. Highest fall risk throughout all heights.",
+        "z_base_m": 0.0,
+        "z_top_m": 6.096,
+        "height_m": 6.096,
+        "bocw_clause": "BOCW §40 — Staircase guardrails; BOCW §41 — Ladder safety",
+        "nbc_clause": "NBC 2016 Part 7 §8.3 — Stairway safety"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              78.66900899,
+              10.81661923,
+              0.0
+            ],
+            [
+              78.66896504,
+              10.81661162,
+              0.0
+            ],
+            [
+              78.66896871,
+              10.81659113,
+              0.0
+            ],
+            [
+              78.66901266,
+              10.81659874,
+              0.0
+            ],
+            [
+              78.66900899,
+              10.81661923,
+              0.0
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "zone": "moderate_risk_interior",
+        "risk": "MODERATE",
+        "alert": true,
+        "alert_level": "WARNING",
+        "description": "Interior construction zone. Active masonry, formwork, reinforcement work.",
+        "z_base_m": 0.0,
+        "z_top_m": 4.877,
+        "height_m": 4.877,
+        "bocw_clause": "BOCW §25 — Safe working conditions; BOCW §38 — PPE mandatory",
+        "nbc_clause": "NBC 2016 Part 7 §4.1 — Working platforms"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              78.66898966,
+              10.81667512,
+              0.0
+            ],
+            [
+              78.66885763,
+              10.81665225,
+              0.0
+            ],
+            [
+              78.66887002,
+              10.81658323,
+              0.0
+            ],
+            [
+              78.66900205,
+              10.81660609,
+              0.0
+            ],
+            [
+              78.66898966,
+              10.81667512,
+              0.0
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "zone": "low_risk_parking",
+        "risk": "LOW",
+        "alert": true,
+        "alert_level": "ADVISORY",
+        "description": "Car parking and site support area. Lower activity zone.",
+        "z_base_m": 0.0,
+        "z_top_m": 6.096,
+        "height_m": 6.096,
+        "bocw_clause": "BOCW §25 — General site safety",
+        "nbc_clause": "NBC 2016 Part 7 §2.1"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              78.66885153,
+              10.81666037,
+              0.0
+            ],
+            [
+              78.66882685,
+              10.8166561,
+              0.0
+            ],
+            [
+              78.66884244,
+              10.81656926,
+              0.0
+            ],
+            [
+              78.66886712,
+              10.81657353,
+              0.0
+            ],
+            [
+              78.66885153,
+              10.81666037,
+              0.0
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "zone": "height_zone_low",
+        "risk": "LOW",
+        "alert": true,
+        "alert_level": "ADVISORY",
+        "description": "Ground level zone (0–1.52m). Workers walking, material handling.",
+        "z_base_m": 0.0,
+        "z_top_m": 1.524,
+        "height_m": 1.524,
+        "bocw_clause": "BOCW §25 — General site safety",
+        "nbc_clause": "NBC 2016 Part 7",
+        "height_zone": true,
+        "elevation_range": "0.00–1.52m"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              78.66899707,
+              10.81668558,
+              0.0
+            ],
+            [
+              78.66882685,
+              10.8166561,
+              0.0
+            ],
+            [
+              78.66884244,
+              10.81656926,
+              0.0
+            ],
+            [
+              78.66901266,
+              10.81659874,
+              0.0
+            ],
+            [
+              78.66899707,
+              10.81668558,
+              0.0
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "zone": "height_zone_moderate",
+        "risk": "MODERATE",
+        "alert": true,
+        "alert_level": "WARNING",
+        "description": "Mid first floor zone (1.52–3.05m). Masonry work, wall construction.",
+        "z_base_m": 1.524,
+        "z_top_m": 3.05,
+        "height_m": 1.526,
+        "bocw_clause": "BOCW §38 — PPE mandatory at elevation; BOCW §36 — Edge protection",
+        "nbc_clause": "NBC 2016 Part 7 §4.1",
+        "height_zone": true,
+        "elevation_range": "1.52–3.05m"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              78.66899707,
+              10.81668558,
+              1.524
+            ],
+            [
+              78.66882685,
+              10.8166561,
+              1.524
+            ],
+            [
+              78.66884244,
+              10.81656926,
+              1.524
+            ],
+            [
+              78.66901266,
+              10.81659874,
+              1.524
+            ],
+            [
+              78.66899707,
+              10.81668558,
+              1.524
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "zone": "height_zone_high",
+        "risk": "HIGH",
+        "alert": true,
+        "alert_level": "CRITICAL",
+        "description": "Upper first floor zone (3.05–4.88m). Near slab level — formwork, reinforcement.",
+        "z_base_m": 3.05,
+        "z_top_m": 4.877,
+        "height_m": 1.827,
+        "bocw_clause": "BOCW §40 — Fall protection mandatory; BOCW §36 — Edge guards",
+        "nbc_clause": "NBC 2016 Part 7 §8.2",
+        "height_zone": true,
+        "elevation_range": "3.05–4.88m"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              78.66899707,
+              10.81668558,
+              3.05
+            ],
+            [
+              78.66882685,
+              10.8166561,
+              3.05
+            ],
+            [
+              78.66884244,
+              10.81656926,
+              3.05
+            ],
+            [
+              78.66901266,
+              10.81659874,
+              3.05
+            ],
+            [
+              78.66899707,
+              10.81668558,
+              3.05
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "zone": "height_zone_critical",
+        "risk": "CRITICAL",
+        "alert": true,
+        "alert_level": "CRITICAL",
+        "description": "Roof slab and parapet edge zone (4.88–6.10m). Maximum fall risk. Worker detected at this level in CCTV (2025-12-29 17:05).",
+        "z_base_m": 4.877,
+        "z_top_m": 6.096,
+        "height_m": 1.219,
+        "bocw_clause": "BOCW §40 — Mandatory safety nets/harness; BOCW §41 — Parapet required",
+        "nbc_clause": "NBC 2016 Part 7 §8.4 — Roof work safety",
+        "height_zone": true,
+        "elevation_range": "4.88–6.10m",
+        "cctv_evidence": "Worker observed at this level 2025-12-29 17:05"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              78.66899707,
+              10.81668558,
+              4.877
+            ],
+            [
+              78.66882685,
+              10.8166561,
+              4.877
+            ],
+            [
+              78.66884244,
+              10.81656926,
+              4.877
+            ],
+            [
+              78.66901266,
+              10.81659874,
+              4.877
+            ],
+            [
+              78.66899707,
+              10.81668558,
+              4.877
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "zone": "camera_fov_CAM01",
+        "risk": "none",
+        "alert": false,
+        "alert_level": "",
+        "description": "CAM-01 field of view projected onto ground plane",
+        "camera_id": "CAM-01",
+        "type": "camera_coverage",
+        "camera_height_m": 7.62,
+        "camera_height_ft": 25,
+        "fov_horizontal_deg": 60,
+        "host_building": "Neighbour building (south)",
+        "direction": "Looking north into construction site",
+        "z_base_m": 0,
+        "z_top_m": 7.62,
+        "height_m": 7.62,
+        "bocw_clause": "",
+        "nbc_clause": ""
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              78.66887363,
+              10.81673767,
+              7.62
+            ],
+            [
+              78.66901508,
+              10.8166887,
+              0.0
+            ],
+            [
+              78.66903387,
+              10.81658406,
+              0.0
+            ],
+            [
+              78.66882763,
+              10.81654833,
+              0.0
+            ],
+            [
+              78.66880883,
+              10.81665298,
+              0.0
+            ],
+            [
+              78.66887363,
+              10.81673767,
+              7.62
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "zone": "camera_CAM01_position",
+        "risk": "none",
+        "alert": false,
+        "alert_level": "",
+        "description": "CAM-01 physical mount position in neighbour building",
+        "camera_id": "CAM-01",
+        "type": "camera",
+        "host_building": "Neighbour building",
+        "camera_height_m": 7.62,
+        "camera_height_ft": 25,
+        "building_height_m": 6.096,
+        "elevation_advantage_m": 1.524,
+        "coverage": "Full site top-down angled view looking NORTH",
+        "rtsp_url": "rtsp://camera_ip:554/stream",
+        "calibration_file": "camera_cam01_H.npy",
+        "z_base_m": 0,
+        "z_top_m": 7.62,
+        "height_m": 7.62,
+        "bocw_clause": "",
+        "nbc_clause": ""
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          78.66887363,
+          10.81673767,
+          7.62
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "zone": "building_corner_SW",
+        "risk": "none",
+        "alert": false,
+        "alert_level": "",
+        "description": "Building corner SW — Kitchen / given GPS reference",
+        "type": "building_corner",
+        "corner": "SW",
+        "world_x_m": 0,
+        "world_y_m": 0,
+        "lat": 10.81658333,
+        "lon": 78.66883333,
+        "z_base_m": 0,
+        "z_top_m": 6.096,
+        "height_m": 6.096,
+        "bocw_clause": "",
+        "nbc_clause": ""
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          78.66899707,
+          10.81668558,
+          0
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "zone": "building_corner_SE",
+        "risk": "none",
+        "alert": false,
+        "alert_level": "",
+        "description": "Building corner SE — Car parking east corner",
+        "type": "building_corner",
+        "corner": "SE",
+        "world_x_m": 18.9,
+        "world_y_m": 0,
+        "lat": 10.81658333,
+        "lon": 78.66900618,
+        "z_base_m": 0,
+        "z_top_m": 6.096,
+        "height_m": 6.096,
+        "bocw_clause": "",
+        "nbc_clause": ""
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          78.66882685,
+          10.8166561,
+          0
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "zone": "building_corner_NE",
+        "risk": "none",
+        "alert": false,
+        "alert_level": "",
+        "description": "Building corner NE — Common toilet NE corner",
+        "type": "building_corner",
+        "corner": "NE",
+        "world_x_m": 18.9,
+        "world_y_m": 9.75,
+        "lat": 10.81667151,
+        "lon": 78.66900618,
+        "z_base_m": 0,
+        "z_top_m": 6.096,
+        "height_m": 6.096,
+        "bocw_clause": "",
+        "nbc_clause": ""
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          78.66884244,
+          10.81656926,
+          0
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "zone": "building_corner_NW",
+        "risk": "none",
+        "alert": false,
+        "alert_level": "",
+        "description": "Building corner NW — Staircase NW corner",
+        "type": "building_corner",
+        "corner": "NW",
+        "world_x_m": 0,
+        "world_y_m": 9.75,
+        "lat": 10.81667151,
+        "lon": 78.66883333,
+        "z_base_m": 0,
+        "z_top_m": 6.096,
+        "height_m": 6.096,
+        "bocw_clause": "",
+        "nbc_clause": ""
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          78.66901266,
+          10.81659874,
+          0
+        ]
+      }
+    }
+  ]
+};
+
+    // â”€â”€â”€ Map init â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    const map = L.map('map', {
+      center: [10.81662, 78.66892],
+      zoom: 20,
+      maxZoom: 22,
+      zoomControl: true,
+    });
+
+    // Satellite tile layer
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+      maxZoom: 22,
+      attribution: 'Esri World Imagery'
+    }).addTo(map);
+
+    // Street labels overlay
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', {
+      maxZoom: 22,
+      opacity: 0.6
+    }).addTo(map);
+
+    // â”€â”€â”€ Info Control â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    const infoCtrl = L.control({ position: 'topright' });
+    infoCtrl.onAdd = function () {
+      this._div = L.DomUtil.create('div', 'info-panel');
+      this.update();
+      return this._div;
+    };
+    infoCtrl.update = function (props) {
+      if (!props) {
+        this._div.innerHTML = '<h4>ðŸ—ï¸ Zone Inspector</h4><div class="detail" style="color:#667">Hover over a zone to inspect</div>';
+        return;
+      }
+      const riskBadge = props.risk !== 'none'
+        ? `<span style="background:${RISK_COLORS[props.risk] || '#666'};color:#000;padding:2px 8px;border-radius:6px;font-weight:700;font-size:11px">${props.risk}</span>`
+        : '';
+      this._div.innerHTML = `
+        <h4>${props.zone.replace(/_/g, ' ').toUpperCase()}</h4>
+        <div class="detail">${riskBadge}${props.alert_level ? ` <strong>${props.alert_level}</strong>` : ''}</div>
+        <div class="detail" style="margin-top:6px">${props.description}</div>
+        <div class="detail" style="margin-top:6px"><strong>Height:</strong> ${props.z_base_m}m â†’ ${props.z_top_m}m (${props.height_m}m)</div>
+        ${props.bocw_clause ? `<div class="detail"><strong>BOCW:</strong> ${props.bocw_clause}</div>` : ''}
+        ${props.nbc_clause ? `<div class="detail"><strong>NBC:</strong> ${props.nbc_clause}</div>` : ''}
+        ${props.elevation_range ? `<div class="detail"><strong>Elevation:</strong> ${props.elevation_range}</div>` : ''}
+      `;
+    };
+    infoCtrl.addTo(map);
+
+    // â”€â”€â”€ Legend â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    const legend = L.control({ position: 'bottomleft' });
+    legend.onAdd = function () {
+      const div = L.DomUtil.create('div', 'legend');
+      div.innerHTML = `
+        <h4>Risk Zones</h4>
+        <div class="legend-item"><div class="legend-color" style="background:#ff1744"></div> CRITICAL â€” Staircase / Roof Edge</div>
+        <div class="legend-item"><div class="legend-color" style="background:#ff6d00"></div> HIGH â€” Scaffolding Perimeter</div>
+        <div class="legend-item"><div class="legend-color" style="background:#ffab00"></div> MODERATE â€” Interior Construction</div>
+        <div class="legend-item"><div class="legend-color" style="background:#00e676"></div> LOW â€” Parking / Ground Level</div>
+        <div class="legend-item"><div class="legend-color" style="background:#42a5f5"></div> Site Boundary</div>
+        <div class="legend-item"><div class="legend-color" style="background:#7c4dff"></div> Camera FOV</div>
+        <div class="legend-item"><div class="legend-color" style="background:#e040fb;border-radius:50%"></div> Camera / Corner Points</div>
+      `;
+      return div;
+    };
+    legend.addTo(map);
+
+    // â”€â”€â”€ Render layers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // Separate layers for toggle
+    const riskLayers = L.layerGroup().addTo(map);
+    const heightLayers = L.layerGroup().addTo(map);
+    const cameraLayers = L.layerGroup().addTo(map);
+    const pointLayers = L.layerGroup().addTo(map);
+
+    function styleFeature(feature) {
+      const zone = feature.properties.zone;
+      const cfg = ZONE_COLORS[zone] || { fill: '#888', stroke: '#aaa', weight: 1 };
+      const isHeight = !!feature.properties.height_zone;
+
+      return {
+        fillColor: cfg.fill,
+        color: cfg.stroke,
+        weight: cfg.weight || 1.5,
+        opacity: 0.9,
+        fillOpacity: isHeight ? 0.12 : 0.28,
+        dashArray: cfg.dash || null,
+      };
+    }
+
+    function onEachFeature(feature, layer) {
+      const p = feature.properties;
+
+      // Tooltip
+      const label = p.zone.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+      layer.bindTooltip(
+        `<div class="zone-name">${label}</div>` +
+        (p.risk !== 'none' ? `<div>Risk: <strong style="color:${RISK_COLORS[p.risk]}">${p.risk}</strong></div>` : '') +
+        `<div style="color:#999;font-size:11px">${p.description.substring(0, 80)}â€¦</div>`,
+        { className: 'zone-tooltip', sticky: true }
+      );
+
+      // Hover highlight
+      layer.on('mouseover', function (e) {
+        if (layer.setStyle) {
+          layer.setStyle({ fillOpacity: 0.5, weight: 3 });
+        }
+        infoCtrl.update(p);
+      });
+      layer.on('mouseout', function (e) {
+        geojsonLayer.resetStyle(layer);
+        infoCtrl.update();
+      });
+    }
+
+    // Add polygons
+    const geojsonLayer = L.geoJSON(geojsonData, {
+      style: styleFeature,
+      onEachFeature: onEachFeature,
+      filter: (f) => f.geometry.type === 'Polygon',
+      pointToLayer: null,
+    }).addTo(map);
+
+    // Add points (cameras, corners)
+    L.geoJSON(geojsonData, {
+      filter: (f) => f.geometry.type === 'Point',
+      pointToLayer: (f, latlng) => {
+        const isCamera = f.properties.zone.includes('camera');
+        return L.circleMarker(latlng, {
+          radius: isCamera ? 8 : 5,
+          fillColor: isCamera ? '#e040fb' : '#00ccff',
+          color: isCamera ? '#ea80fc' : '#80deea',
+          weight: 2,
+          fillOpacity: 0.9,
+        });
+      },
+      onEachFeature: (f, layer) => {
+        const label = f.properties.zone.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+        layer.bindTooltip(
+          `<div class="zone-name">${label}</div><div style="color:#999">${f.properties.description}</div>`,
+          { className: 'zone-tooltip' }
+        );
+        layer.on('mouseover', () => infoCtrl.update(f.properties));
+        layer.on('mouseout', () => infoCtrl.update());
+      }
+    }).addTo(map);
+
+    // Fit bounds
+    map.fitBounds(geojsonLayer.getBounds().pad(0.3));
+
+    // â”€â”€â”€ Layer Control â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // Group features for toggle (simplified â€” all on one layer here)
+  </script>
+</body>
+</html>
+

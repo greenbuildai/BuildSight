@@ -48,7 +48,23 @@
       "Bash(npm create:*)",
       "Bash(npm install:*)",
       "Bash(npm run:*)",
-      "Bash(curl -s http://localhost:5174/)"
+      "Bash(curl -s http://localhost:5174/)",
+      "Bash(npx tsc:*)",
+      "Bash(cp \"dashboard/backend/backups/2026-04-11_scene_classification_fp_fix/server.py.bak\" \"dashboard/backend/server.py\")",
+      "Bash(cp \"dashboard/backend/backups/2026-04-11_scene_classification_fp_fix/site_aware_ensemble.py.bak\" \"scripts/site_aware_ensemble.py\")",
+      "Bash(cp \"dashboard/backend/backups/2026-04-11_scene_classification_fp_fix/DetectionPanel.tsx.bak\" \"dashboard/src/components/DetectionPanel.tsx\")",
+      "Bash(cp \"dashboard/backend/backups/2026-04-11_scene_classification_fp_fix/DetectionPanel.css.bak\" \"dashboard/src/components/DetectionPanel.css\")",
+      "Bash(mkdir -p dashboard/backend/backups/2026-04-11_detection_regression_fix)",
+      "Bash(cp dashboard/backend/server.py dashboard/backend/backups/2026-04-11_detection_regression_fix/server.py.bak)",
+      "Bash(cp scripts/adaptive_postprocess.py dashboard/backend/backups/2026-04-11_detection_regression_fix/adaptive_postprocess.py.bak)",
+      "Bash(cp scripts/site_aware_ensemble.py dashboard/backend/backups/2026-04-11_detection_regression_fix/site_aware_ensemble.py.bak)",
+      "Read(//nfsshare/joseva/**)",
+      "Read(//c/Windows/System32/drivers/etc/**)",
+      "Bash(ipconfig)",
+      "Bash(ping -n 2 -w 2000 172.16.13.62)"
+    ],
+    "additionalDirectories": [
+      "e:\\Company\\Green Build AI\\Prototypes\\BuildSight\\dashboard\\backend\\backups"
     ]
   }
 }

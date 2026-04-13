@@ -25,6 +25,7 @@ import os
 import tempfile
 import time
 import uuid
+# deque removed — scene smoothing now handled by SceneConditionTracker (hysteresis)
 from pathlib import Path
 
 import cv2
@@ -32,11 +33,12 @@ import numpy as np
 import torch
 from pydantic import BaseModel
 import requests as _requests
-from fastapi import FastAPI, File, Form, UploadFile
+from fastapi import FastAPI, File, Form, Request, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from starlette.background import BackgroundTask
+import traceback as _traceback
 import database
 from geoai import geoai_router
 
@@ -115,43 +117,82 @@ COLORS = {
     "worker":      (255, 136,   0),    # Blue   (BGR)
 }
 
-# ── WBF / NMS params ───────────────────────────────────────────────────────────
-# Class IDs in SASTRA schema: 0=helmet, 1=safety_vest, 2=worker
-MODEL_WEIGHTS   = [0.55, 0.45]
+# ╔══════════════════════════════════════════════════════════════════════════════╗
+# ║  BUILDSITE TUNING CONSTANTS — All thresholds in one place for easy tuning  ║
+# ╚══════════════════════════════════════════════════════════════════════════════╝
 
-# WBF IoU thresholds — HIGHER = fewer fusions (boxes must overlap more to be
-# merged). Worker raised to 0.65 so nearby-but-different workers (typical IoU
-# 0.20-0.45) are NOT fused, while same-worker outputs from two models (typical
-# IoU 0.75+) still merge correctly.
-WBF_IOU         = {0: 0.45, 1: 0.50, 2: 0.65}
+# ── Ensemble model weights ───────────────────────────────────────────────────
+MODEL_WEIGHTS   = [0.55, 0.45]   # [YOLOv11, YOLOv26]
 
-# Post-WBF confidence gates. Helmet raised (0.20→0.30) to suppress false
-# positives on hair/shoulders; vest lowered (0.22→0.14) so partially-occluded
-# vests that score weakly still survive; worker kept low (0.18) to catch small
-# or distant workers.
+# ── WBF IoU thresholds (class IDs: 0=helmet, 1=safety_vest, 2=worker) ────────
+# Higher = boxes must overlap more to be merged (fewer fusions).
+# Worker tuned per condition in WBF_IOU_BY_CONDITION below.
+WBF_IOU         = {0: 0.45, 1: 0.45, 2: 0.50}   # default / S1_normal
+
+# Per-condition WBF IoU thresholds (class IDs: 0=helmet, 1=safety_vest, 2=worker)
+# Worker lowered 0.65 → 0.50: same-person boxes from YOLOv11+YOLOv26 typically
+# land at IoU 0.50–0.65 — the old threshold caused them to survive as two overlapping
+# boxes instead of being merged into one.
+WBF_IOU_BY_CONDITION: dict[str, dict[int, float]] = {
+    "S1_normal":    {0: 0.45, 1: 0.45, 2: 0.50},
+    "S2_dusty":     {0: 0.42, 1: 0.42, 2: 0.48},
+    "S3_low_light": {0: 0.40, 1: 0.40, 2: 0.46},
+    "S4_crowded":   {0: 0.45, 1: 0.45, 2: 0.50},
+}
+
+# ── Post-WBF duplicate suppression (all classes) ─────────────────────────────
+# After WBF, a final IoU pass removes near-identical boxes that the fusion step
+# didn't merge. Applied per-class so PPE overlap tolerance can differ from worker.
+POST_WBF_DEDUP_IOU: dict[int, float] = {0: 0.35, 1: 0.35, 2: 0.35}
+
+# Containment threshold: if the smaller box has ≥ this fraction of its area
+# inside the larger box, treat them as the same detection (catches size-
+# mismatched boxes from the two models that slip past IoU-only dedup).
+DEDUP_CONTAIN_THRESH: float = 0.60
+
+# ── Post-WBF confidence gates ─────────────────────────────────────────────────
+# Helmet raised (0.20→0.30): suppresses hair/shoulder false positives.
+# Vest kept low (0.14): partially-occluded/dirty vests would be missed otherwise.
+# Worker low (0.18): catch small or distant workers.
 POST_WBF_GLOBAL = {0: 0.30, 1: 0.14, 2: 0.18}
 
-# Lower pre-WBF conf so weak-but-real detections (small workers, partially
-# occluded helmets) reach the WBF stage where the two models can reinforce them.
-PRE_CONF        = 0.20
-
-# NMS IoU inside each model's predict() — higher = less aggressive suppression
-# so adjacent workers are NOT suppressed before WBF even sees them.
-NMS_IOU         = 0.60
-
-EARLY_EXIT_CONF = 0.75   # raised: real scenes with PPE rarely all-high-conf
-
-# ── Condition-specific post-WBF confidence gates ───────────────────────────────
-# In low-light and dusty scenes every class scores lower, so we relax the gates
-# rather than miss real detections. Crowded scenes get a slightly lower worker
-# gate so distant/small workers still pass.
-# Keys: SASTRA class IDs  0=helmet, 1=safety_vest, 2=worker
+# In low-light/dusty scenes every class scores lower — relax gates.
 POST_WBF_BY_CONDITION: dict[str, dict[int, float]] = {
     "S1_normal":    {0: 0.30, 1: 0.14, 2: 0.18},
-    "S2_dusty":     {0: 0.25, 1: 0.10, 2: 0.15},  # vest hard to see in dust
-    "S3_low_light": {0: 0.22, 1: 0.10, 2: 0.14},  # everything scores weaker
-    "S4_crowded":   {0: 0.28, 1: 0.12, 2: 0.15},  # small/distant workers
+    "S2_dusty":     {0: 0.25, 1: 0.10, 2: 0.15},
+    "S3_low_light": {0: 0.22, 1: 0.10, 2: 0.14},
+    "S4_crowded":   {0: 0.28, 1: 0.12, 2: 0.15},
 }
+
+# ── Pre-WBF confidence threshold ─────────────────────────────────────────────
+# Low enough to let weak-but-real detections reach WBF for reinforcement.
+PRE_CONF        = 0.20
+
+# ── Per-model NMS IoU (inside YOLO predict) ───────────────────────────────────
+# Higher = less aggressive suppression so adjacent workers survive per-model NMS
+# before WBF sees them.
+NMS_IOU         = 0.60
+
+# ── Early-exit threshold (skip YOLOv26 when v11 is already very confident) ───
+EARLY_EXIT_CONF = 0.75
+
+# ── Scene classification constants ─────────────────────────────────────────
+# AUTO_* constants and SceneConditionTracker are defined after load_models()
+# (they need cls_map which is populated during model load).  See the block
+# starting with 'AUTO_LOW_LIGHT_THRESH' below.
+
+# ── Safety vest validator thresholds ─────────────────────────────────────────
+# Primary: HSV neon-color ranges (S = saturation, V = value in [0,255])
+VEST_NEON_SAT_MIN:       float = 80.0   # minimum saturation for neon signal
+VEST_NEON_VAL_MIN:       float = 80.0   # minimum brightness for neon signal
+VEST_DUSTY_SAT_FLOOR:    float = 40.0   # relaxed saturation floor for dusty scenes
+VEST_LOWLIGHT_VAL_FLOOR: float = 35.0   # relaxed brightness floor for dark scenes
+# Secondary: reflective strip detection
+VEST_REFLECTIVE_THRESH:  float = 200.0  # grayscale intensity considered reflective
+VEST_REFLECTIVE_RATIO:   float = 0.08   # fraction of pixels in torso that are reflective
+# Torso-region placement gate (fraction of worker height from top of box)
+VEST_TORSO_TOP:    float = 0.20   # vest centroid must be ≥ 20% down from box top
+VEST_TORSO_BOTTOM: float = 0.80   # vest centroid must be ≤ 80% down from box bottom
 
 # ── app ────────────────────────────────────────────────────────────────────────
 app = FastAPI(title="BuildSight Detection API", version="2.0")
@@ -161,13 +202,48 @@ app.add_middleware(
     allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
+
+# ── Global exception handler ──────────────────────────────────────────────────
+# Ensures any unhandled exception inside an endpoint returns a structured JSON
+# response instead of crashing the connection (which causes "FAILED TO FETCH"
+# in the frontend because the browser receives a connection reset or empty body).
+from fastapi.exception_handlers import http_exception_handler
+from starlette.exceptions import HTTPException as StarletteHTTPException
+
+@app.exception_handler(Exception)
+async def _global_exception_handler(request: Request, exc: Exception):
+    detail = _traceback.format_exc()
+    logger.error(f"[UNHANDLED EXCEPTION] {request.url.path}: {exc}\n{detail}")
+    return JSONResponse(
+        status_code=500,
+        content={
+            "status":      "error",
+            "error":       str(exc),
+            "detail":      detail[:400],
+            "detections":  [],
+            "total":       0,
+            "valid_workers": [],
+            "condition":   "S1_normal",
+        },
+    )
+
+@app.exception_handler(StarletteHTTPException)
+async def _http_exception_handler(request: Request, exc: StarletteHTTPException):
+    return await http_exception_handler(request, exc)
 
 # Initialize database
 database.init_db()
 
 # Include GeoAI router
 app.include_router(geoai_router, prefix="/api/geoai", tags=["geoai"])
+
+# ── Shared state for GeoAI VLM / SAM access ──────────────────────────────────
+# The VLM and SAM router helpers import this module and read these variables.
+# They are updated by the live-frame and video detection endpoints below.
+latest_frame_jpeg: bytes | None = None   # most recent encoded JPEG from any detection path
+detection_stats: dict = {}               # summary counts refreshed each inference call
 
 # ── Turner AI Configuration ──────────────────────────────────────────────────
 logger = logging.getLogger("buildsight")
@@ -400,6 +476,568 @@ def load_models():
 load_models()
 
 
+# ── Startup Health Checks ───────────────────────────────────────────────────
+@app.on_event("startup")
+async def startup_health_check():
+    """Performs a comprehensive system health check on startup."""
+    logger.info("═"*50)
+    logger.info("  BUILDSIGHT BACKEND INITIALIZATION REPORT")
+    logger.info("═"*50)
+    
+    # 1. Models Check
+    logger.info(f"[-] Ensemble Mode: {mode_name}")
+    logger.info(f"[-] Detection Device: {DEVICE}")
+    if model_v11 is not None:
+        logger.info("    [OK] YOLOv11 loaded")
+    if model_v26 is not None:
+        logger.info("    [OK] YOLOv26 loaded")
+        
+    # 2. GeoAI Utility Check
+    try:
+        from geoai_vlm_util import is_available as vlm_ready
+        from geoai_sam_util import is_available as sam_ready
+        logger.info(f"[-] GeoAI VLM: {'READY' if vlm_ready() else 'OFFLINE'}")
+        logger.info(f"[-] GeoAI SAM: {'READY' if sam_ready() else 'OFFLINE'}")
+    except ImportError:
+        logger.info("[-] GeoAI Utils: OFFLINE (Import Error)")
+    
+    # 3. Database Check
+    try:
+        conn = database.get_db_connection()
+        logger.info("    [OK] Database: Connection stable")
+        conn.close()
+    except Exception as e:
+        logger.info(f"    [!!] Database: Connection failed ({e})")
+        
+    # 4. Route Mapping Check
+    routes = [r.path for r in app.routes]
+    logger.info(f"[-] API Surface: {len(routes)} routes mapped")
+    if any("/api/geoai" in r for r in routes):
+        logger.info("    [OK] GeoAI Router integrated")
+    
+    logger.info("═"*50)
+
+
+
+
+# ── Automated Scene Classification (restored from Toni's backup 2026-04-11) ──
+#
+# ── Scene Auto-Classification ─────────────────────────────────────────────────
+# classify_scene_fast() uses image stats + a cached model quick-pass to classify
+# frames into S1/S2/S3/S4.  SceneConditionTracker applies hysteresis so that
+# noisy single-frame spikes cannot flip the condition.
+#
+# Classification hierarchy (highest priority first):
+#   S3_low_light : low brightness OR large dark-region fraction
+#   S2_dusty     : high haze OR (low contrast AND low saturation)
+#   S4_crowded   : ≥1 of: (a) 4+ high-conf valid workers, (b) 3+ workers in a
+#                  close spatial cluster, (c) high local crowd density,
+#                  (d) temporal persistence of elevated valid worker count
+#                  — NOT triggered by clutter, low-conf boxes, or single-frame spikes
+#   S1_normal    : default
+
+# ── Image-stats thresholds ────────────────────────────────────────────────────
+AUTO_LOW_LIGHT_THRESH      = 70    # mean gray < this → S3_low_light
+AUTO_DARK_REGION_FRAC      = 0.35  # fraction of pixels below 50 brightness → S3
+AUTO_DUSTY_STD_THRESH      = 48    # gray std < this → candidate dusty
+AUTO_DUSTY_SAT_THRESH      = 72    # mean HSV-S < this → confirm dusty
+AUTO_HAZE_THRESH           = 185   # mean of top-5% brightest pixels → haze → S2
+
+# ── Valid-worker counting thresholds ─────────────────────────────────────────
+AUTO_QUICK_WORKER_CONF     = 0.35  # minimum confidence to count a worker (raised from 0.22)
+AUTO_VALID_WORKER_MIN_H    = 0.05  # worker box must be ≥ 5% of frame height
+AUTO_VALID_WORKER_ASP_MIN  = 0.18  # w/h aspect ratio lower bound (not a pole/pipe)
+AUTO_VALID_WORKER_ASP_MAX  = 1.30  # w/h aspect ratio upper bound (not a flat slab)
+
+# ── S4 crowd-detection thresholds ────────────────────────────────────────────
+AUTO_CROWD_WORKER_THRESH   = 4     # ≥ N high-conf valid workers → S4 signal
+AUTO_CROWD_CLOSE_K         = 3     # K workers within CLOSE_DIST → crowd cluster
+AUTO_CROWD_CLOSE_DIST      = 0.28  # normalised centroid distance for "close"
+AUTO_CROWD_DENSITY_THRESH  = 0.40  # fraction of 4×4 tile occupied by workers → dense
+AUTO_CROWD_OVERLAP_THRESH  = 0.08  # mean pairwise IoU ≥ this among 3+ workers → S4
+
+# ── Hysteresis frame counts ───────────────────────────────────────────────────
+CROWD_ENTER_FRAMES         = 3     # consecutive S4 signals needed to enter crowded
+CROWD_EXIT_FRAMES          = 5     # consecutive non-S4 signals needed to leave crowded
+STABILITY_WINDOW           = 5     # rolling window for non-S4 mode smoothing
+SCENE_CACHE_FRAMES         = 10    # model forward-pass cached for N frames
+WORKER_HISTORY_LEN         = 6     # frames of valid-worker counts kept for temporal check
+TEMPORAL_CROWD_MIN_FRAMES  = 3     # frames in WORKER_HISTORY_LEN window above thresh → S4
+
+
+class SceneConditionTracker:
+    """
+    Stateful hysteresis tracker for scene conditions.
+
+    Prevents rapid flickering between S4_crowded and S1_normal on borderline
+    scenes — entering S4 requires CROWD_ENTER_FRAMES consecutive hits, exiting
+    requires CROWD_EXIT_FRAMES consecutive clear frames.
+
+    Also stores a short history of valid-worker counts per frame so that
+    classify_scene_fast() can check temporal persistence before triggering S4.
+    """
+
+    def __init__(self):
+        self.current: str = "S1_normal"
+        self._history: list[str] = []
+        self._crowd_consecutive: int = 0
+        self._non_crowd_consecutive: int = 0
+        self._dusty_consecutive: int = 0
+        self._non_dusty_consecutive: int = 0
+        self._cache_frame_count: int = 0
+        self.cache_invalidated: bool = False
+        # Rolling window of valid-worker counts — populated by classify_scene_fast
+        self._worker_count_history: list[int] = []
+
+    @property
+    def current_condition(self) -> str:
+        return self.current
+
+    def invalidate_cache(self):
+        """Force a model re-pass on the next frame (called after threshold change)."""
+        self.cache_invalidated = True
+        self._cache_frame_count = 0
+
+    def push_worker_count(self, n: int) -> None:
+        """Record how many valid workers were seen this frame."""
+        self._worker_count_history.append(n)
+        if len(self._worker_count_history) > WORKER_HISTORY_LEN:
+            self._worker_count_history.pop(0)
+
+    def temporal_crowd_active(self, threshold: int) -> bool:
+        """
+        Return True if at least TEMPORAL_CROWD_MIN_FRAMES of the last
+        WORKER_HISTORY_LEN frames had ≥ threshold valid workers.
+        """
+        if len(self._worker_count_history) < TEMPORAL_CROWD_MIN_FRAMES:
+            return False
+        above = sum(1 for c in self._worker_count_history if c >= threshold)
+        return above >= TEMPORAL_CROWD_MIN_FRAMES
+
+    def update(self, raw_condition: str) -> str:
+        """Feed a raw single-frame condition, return the stabilised condition."""
+        self._history.append(raw_condition)
+        if len(self._history) > max(CROWD_ENTER_FRAMES, STABILITY_WINDOW, CROWD_EXIT_FRAMES) + 5:
+            self._history.pop(0)
+
+        is_crowd_signal = (raw_condition == "S4_crowded")
+        is_dusty_signal = (raw_condition == "S2_dusty")
+
+        # ── S4 Crowded Hysteresis ────────────────────────────────────────────
+        if is_crowd_signal:
+            self._crowd_consecutive += 1
+            self._non_crowd_consecutive = 0
+        else:
+            self._non_crowd_consecutive += 1
+            self._crowd_consecutive = max(0, self._crowd_consecutive - 1)
+
+        # ── S2 Dusty Hysteresis ──────────────────────────────────────────────
+        if is_dusty_signal:
+            self._dusty_consecutive += 1
+            self._non_dusty_consecutive = 0
+        else:
+            self._non_dusty_consecutive += 1
+            self._dusty_consecutive = max(0, self._dusty_consecutive - 1)
+
+        # ── State Transition Logic ───────────────────────────────────────────
+        # Priority: S3 (Direct) > S2 (Hysteresis) > S4 (Hysteresis) > S1
+        if raw_condition == "S3_low_light":
+            self.current = "S3_low_light"
+            return self.current
+
+        if self.current == "S4_crowded":
+            if self._non_crowd_consecutive >= CROWD_EXIT_FRAMES:
+                self.current = self._stabilise_non_crowd()
+        elif self.current == "S2_dusty":
+             if self._non_dusty_consecutive >= 5: # exit dusty
+                self.current = self._stabilise_non_crowd()
+        else:
+            if self._dusty_consecutive >= 3: # enter dusty
+                self.current = "S2_dusty"
+                self._non_dusty_consecutive = 0
+            elif self._crowd_consecutive >= CROWD_ENTER_FRAMES:
+                self.current = "S4_crowded"
+                self._non_crowd_consecutive = 0
+            else:
+                self.current = self._stabilise_non_crowd()
+
+        return self.current
+
+    def _stabilise_non_crowd(self) -> str:
+        recent = [c for c in self._history[-STABILITY_WINDOW:] if c != "S4_crowded"]
+        if not recent:
+            return "S1_normal"
+        counts: dict[str, int] = {}
+        for c in recent:
+            counts[c] = counts.get(c, 0) + 1
+        return max(counts, key=lambda k: counts[k])
+
+    def should_reclassify(self) -> bool:
+        """
+        Return True when the model forward-pass should run this frame.
+        Image-stats conditions (brightness/haze) always run — only the expensive
+        model count pass is cached every SCENE_CACHE_FRAMES frames.
+        """
+        if self.cache_invalidated:
+            self.cache_invalidated = False
+            return True
+        self._cache_frame_count += 1
+        return (self._cache_frame_count % SCENE_CACHE_FRAMES) == 1
+
+    def reset(self):
+        self.__init__()
+
+
+# Module-level tracker instance — shared across /detect/frame live calls
+_scene_tracker = SceneConditionTracker()
+
+
+def _is_valid_worker_box(box: list, conf: float, img_h: int, _img_w: int = 0) -> bool:
+    """
+    Return True only if a detection is a plausible human worker.
+
+    Rejects: cement bags, buckets, scaffolding poles, bricks, material piles,
+    floating PPE, duplicate sub-threshold detections, and very small far-off
+    detections that are likely clutter.
+
+    Criteria checked:
+      - Confidence ≥ AUTO_QUICK_WORKER_CONF
+      - Box height ≥ AUTO_VALID_WORKER_MIN_H × frame height
+      - Aspect ratio (w/h) within [AUTO_VALID_WORKER_ASP_MIN, AUTO_VALID_WORKER_ASP_MAX]
+    """
+    if conf < AUTO_QUICK_WORKER_CONF:
+        return False
+    x1, y1, x2, y2 = box
+    bw = max(x2 - x1, 1e-3)
+    bh = max(y2 - y1, 1e-3)
+    if bh < AUTO_VALID_WORKER_MIN_H * img_h:
+        return False
+    aspect = bw / bh
+    if aspect < AUTO_VALID_WORKER_ASP_MIN or aspect > AUTO_VALID_WORKER_ASP_MAX:
+        return False
+    return True
+
+
+def _count_valid_workers(r_boxes, img_h: int, img_w: int) -> tuple[list, int]:
+    """
+    From a raw YOLO result box list, return (valid_boxes, n_valid).
+
+    Only counts boxes that pass _is_valid_worker_box() — this is the single
+    source of truth for "how many workers are really in this frame?" used by
+    the scene classifier.  Low-confidence clutter, poles, bags, and material
+    piles are excluded before any scene-condition logic runs.
+    """
+    worker_cls_ids = {k for k, v in cls_map.items() if v in ("worker", "person")}
+    valid: list = []
+    for b in (r_boxes or []):
+        cls_id = int(b.cls[0])
+        conf   = float(b.conf[0])
+        if cls_id not in worker_cls_ids:
+            continue
+        box = b.xyxy[0].cpu().numpy().tolist()
+        if _is_valid_worker_box(box, conf, img_h, img_w):
+            valid.append({"box": box, "score": conf})
+    return valid, len(valid)
+
+
+def _has_crowd_cluster(valid_boxes: list, img_w: int, img_h: int) -> bool:
+    """
+    Return True if at least AUTO_CROWD_CLOSE_K workers have their centroids
+    within AUTO_CROWD_CLOSE_DIST of each other (normalised by frame diagonal).
+
+    This detects tight worker groups that indicate a crowded work zone even
+    when the total worker count is below AUTO_CROWD_WORKER_THRESH.
+    """
+    if len(valid_boxes) < AUTO_CROWD_CLOSE_K:
+        return False
+    diag = ((img_w ** 2 + img_h ** 2) ** 0.5) or 1.0
+    centroids = [
+        ((b["box"][0] + b["box"][2]) / 2.0,
+         (b["box"][1] + b["box"][3]) / 2.0)
+        for b in valid_boxes
+    ]
+    for i, (cx, cy) in enumerate(centroids):
+        close = 1  # count self
+        for j, (ox, oy) in enumerate(centroids):
+            if i == j:
+                continue
+            dist = ((cx - ox) ** 2 + (cy - oy) ** 2) ** 0.5 / diag
+            if dist <= AUTO_CROWD_CLOSE_DIST:
+                close += 1
+        if close >= AUTO_CROWD_CLOSE_K:
+            return True
+    return False
+
+
+def _has_high_crowd_density(valid_boxes: list, img_w: int, img_h: int) -> bool:
+    """
+    Divide the frame into a 4×4 grid.  If any tile has ≥ AUTO_CROWD_DENSITY_THRESH
+    fraction of its area covered by valid worker boxes, return True.
+
+    This catches scenarios where workers are physically close but centroids are
+    spread — e.g., workers overlapping shoulders in a tight corridor.
+    """
+    if not valid_boxes:
+        return False
+    cols, rows = 4, 4
+    tw, th = img_w / cols, img_h / rows
+    for row in range(rows):
+        for col in range(cols):
+            tx1 = col * tw;   ty1 = row * th
+            tx2 = tx1 + tw;   ty2 = ty1 + th
+            tile_area = tw * th
+            overlap_sum = 0.0
+            for b in valid_boxes:
+                bx1, by1, bx2, by2 = b["box"]
+                ix1 = max(bx1, tx1); iy1 = max(by1, ty1)
+                ix2 = min(bx2, tx2); iy2 = min(by2, ty2)
+                inter = max(0.0, ix2 - ix1) * max(0.0, iy2 - iy1)
+                overlap_sum += inter
+            if overlap_sum / max(tile_area, 1e-3) >= AUTO_CROWD_DENSITY_THRESH:
+                return True
+    return False
+
+
+def classify_scene_fast(
+    img_bgr: np.ndarray,
+    model,
+    device: str,
+    half: bool,
+) -> str:
+    """
+    Classify a single frame into S1/S2/S3/S4 using multiple signals:
+      - Image stats: brightness, contrast, saturation, haze, dark-region fraction
+      - Valid worker count (confidence + geometry validated — no clutter)
+      - Crowd cluster analysis (spatial proximity)
+      - Local crowd density (tile-based area overlap)
+      - Temporal persistence across WORKER_HISTORY_LEN frames
+
+    Priority: S3_low_light > S2_dusty > S4_crowded > S1_normal.
+
+    S4 requires at least ONE of:
+      (a) ≥ AUTO_CROWD_WORKER_THRESH high-conf valid workers this frame
+      (b) ≥ AUTO_CROWD_CLOSE_K workers grouped within AUTO_CROWD_CLOSE_DIST
+      (c) High local crowd density in any tile
+      (d) Temporal persistence: ≥ TEMPORAL_CROWD_MIN_FRAMES of last WORKER_HISTORY_LEN
+          frames had ≥ 3 valid workers
+
+    S4 is NOT triggered by:
+      - Low-confidence workers / clutter detections
+      - Single-frame spikes (temporal filter prevents this)
+      - Floating PPE without a valid worker nearby
+      - Very small distant detections below MIN_H
+    """
+    h, w = img_bgr.shape[:2]
+    gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
+    hsv  = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2HSV)
+
+    brightness = float(np.mean(gray))
+    contrast   = float(np.std(gray))
+    saturation = float(np.mean(hsv[:, :, 1]))
+
+    # ── S3 Low Light ─────────────────────────────────────────────────────────
+    # Primary signal: overall darkness
+    if brightness < AUTO_LOW_LIGHT_THRESH:
+        return _scene_tracker.update("S3_low_light")
+    # Secondary signal: large dark-region fraction (shadows / night corners)
+    dark_frac = float(np.mean(gray < 50))
+    if dark_frac >= AUTO_DARK_REGION_FRAC:
+        return _scene_tracker.update("S3_low_light")
+
+    # ── S2 Dusty ─────────────────────────────────────────────────────────────
+    # Haze signal: top-5% brightest pixels washed out (fog / dust scatter)
+    top5_thresh = np.percentile(gray, 95)
+    haze_level  = float(np.mean(gray[gray >= top5_thresh]))
+    if haze_level >= AUTO_HAZE_THRESH:
+        return _scene_tracker.update("S2_dusty")
+    # Classic dusty: low contrast + low saturation (desaturated, washed out)
+    if contrast < AUTO_DUSTY_STD_THRESH and saturation < AUTO_DUSTY_SAT_THRESH:
+        return _scene_tracker.update("S2_dusty")
+
+    # ── S4 Crowded (model-based — cached) ────────────────────────────────────
+    # Re-use last tracker state if the cache is still valid
+    if not _scene_tracker.should_reclassify():
+        return _scene_tracker.current
+
+    if model is None:
+        _scene_tracker.push_worker_count(0)
+        return _scene_tracker.update("S1_normal")
+
+    r = model.predict(
+        img_bgr, device=device, verbose=False,
+        conf=AUTO_QUICK_WORKER_CONF, iou=0.50, half=half,
+        agnostic_nms=False,
+    )[0]
+
+    valid_workers, n_valid = _count_valid_workers(r.boxes, h, w)
+
+    # Push count into temporal history before any threshold checks
+    _scene_tracker.push_worker_count(n_valid)
+
+    # Signal (a): enough high-confidence valid workers this frame
+    if n_valid >= AUTO_CROWD_WORKER_THRESH:
+        return _scene_tracker.update("S4_crowded")
+
+    # Signal (b): spatial cluster — 3+ workers grouped closely together
+    if _has_crowd_cluster(valid_workers, w, h):
+        return _scene_tracker.update("S4_crowded")
+
+    # Signal (c): high local crowd density in any tile
+    if _has_high_crowd_density(valid_workers, w, h):
+        return _scene_tracker.update("S4_crowded")
+
+    # Signal (d): temporal persistence — crowd pattern repeated across frames
+    if _scene_tracker.temporal_crowd_active(threshold=3):
+        return _scene_tracker.update("S4_crowded")
+
+    # Overlap check among 3+ valid workers (original signal, kept as supplement)
+    if len(valid_workers) >= 3:
+        boxes = [vw["box"] for vw in valid_workers]
+        overlaps = [
+            iou_box(boxes[i], boxes[j])
+            for i in range(len(boxes))
+            for j in range(i + 1, len(boxes))
+        ]
+        if overlaps and float(np.mean(overlaps)) >= AUTO_CROWD_OVERLAP_THRESH:
+            return _scene_tracker.update("S4_crowded")
+
+    return _scene_tracker.update("S1_normal")
+
+
+# ── Multi-signal Safety Vest Validator ───────────────────────────────────────
+# A vest detection must pass ≥ 1 of the following signal checks to survive:
+#   Signal A — HSV neon-color gate (primary):   high saturation + high value
+#               within any of the defined HSV ranges for hi-vis colours.
+#   Signal B — Reflective strip gate (secondary): a stripe of very bright
+#               gray/white pixels with aspect ratio ≥ 3:1 (horizontal stripe).
+#   Signal C — Torso placement gate: vest centroid sits in the torso region
+#               (20%-80%) of the associated worker box.
+# Condition overrides:
+#   • S2_dusty:     saturation floor lowered (dust desaturates bright vests).
+#   • S3_low_light: value floor lowered (dark scene dims bright colours).
+# Rejection targets: plain white shirts, cloth, bright tarps, foam.
+
+# HSV ranges for commonly-used hi-vis vest colours.
+# Each entry is (H_low, H_high, S_min, V_min) in OpenCV HSV (H ∈ [0,179]).
+_VEST_HSV_RANGES = [
+    # Neon yellow / lime yellow
+    (18,  40, VEST_NEON_SAT_MIN, VEST_NEON_VAL_MIN),
+    # Neon orange / amber
+    ( 5,  18, VEST_NEON_SAT_MIN, VEST_NEON_VAL_MIN),
+    # Lime green / fluorescent green
+    (40,  75, VEST_NEON_SAT_MIN, VEST_NEON_VAL_MIN),
+    # Deep orange / red-orange (Indian construction)
+    ( 0,   5, VEST_NEON_SAT_MIN, VEST_NEON_VAL_MIN),
+    (165, 179, VEST_NEON_SAT_MIN, VEST_NEON_VAL_MIN),  # red-wrap
+]
+
+
+def validate_safety_vest(
+    frame_bgr:   np.ndarray,
+    vest_box:    list,       # [x1, y1, x2, y2] in pixel coords
+    worker_box:  list | None,  # [x1, y1, x2, y2] of associated worker
+    condition:   str = "S1_normal",
+) -> bool:
+    """
+    Multi-signal gate for a vest detection.  Returns True if the crop plausibly
+    contains a real safety vest, False if it should be rejected.
+
+    Designed to reject:
+      • Plain white shirts / towels / cloth
+      • Random bright construction materials (foam, PVC pipes, paint cans)
+      • Low-saturation detections not supported by reflective strips or PPE context
+
+    While preserving:
+      • Dusty / faded / mud-covered vests (dusty-mode override)
+      • Dark vests in low-light (low-light override)
+      • Grey or white reflective jackets (detected via strip pattern)
+      • Any vest already confirmed by worker context (temporal trust)
+    """
+    fh, fw = frame_bgr.shape[:2]
+    vx1, vy1, vx2, vy2 = [
+        max(0, int(round(c))) for c in vest_box
+    ]
+    vx2 = min(vx2, fw)
+    vy2 = min(vy2, fh)
+    if vx2 <= vx1 or vy2 <= vy1:
+        return False   # degenerate box
+
+    crop = frame_bgr[vy1:vy2, vx1:vx2]
+    if crop.size == 0:
+        return False
+
+    # ── Condition-specific threshold overrides ───────────────────────────────
+    sat_floor = VEST_NEON_SAT_MIN
+    val_floor = VEST_NEON_VAL_MIN
+    if condition == "S2_dusty":
+        sat_floor = VEST_DUSTY_SAT_FLOOR   # dust desaturates vests
+        val_floor = VEST_NEON_VAL_MIN * 0.85
+    elif condition == "S3_low_light":
+        val_floor = VEST_LOWLIGHT_VAL_FLOOR   # dark scene dims everything
+    elif condition == "S4_crowded":
+        sat_floor = VEST_NEON_SAT_MIN * 0.90  # slight relaxation in crowds
+
+    # ── Signal A: HSV neon-color gate ────────────────────────────────────────
+    hsv = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV)
+    h_ch = hsv[:, :, 0].astype(np.float32)
+    s_ch = hsv[:, :, 1].astype(np.float32)
+    v_ch = hsv[:, :, 2].astype(np.float32)
+
+    neon_mask = np.zeros(crop.shape[:2], dtype=bool)
+    for (h_lo, h_hi, s_min, v_min) in _VEST_HSV_RANGES:
+        s_ok = s_ch >= sat_floor
+        v_ok = v_ch >= val_floor
+        if h_lo <= h_hi:
+            h_ok = (h_ch >= h_lo) & (h_ch <= h_hi)
+        else:  # wrap-around (red hues)
+            h_ok = (h_ch >= h_lo) | (h_ch <= h_hi)
+        neon_mask |= (h_ok & s_ok & v_ok)
+
+    neon_ratio = float(neon_mask.sum()) / max(crop.shape[0] * crop.shape[1], 1)
+    signal_a_pass = (neon_ratio >= 0.10)   # ≥ 10% of crop is neon
+
+    # ── Signal B: Reflective strip detection ─────────────────────────────────
+    gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
+    bright_mask = gray.astype(np.float32) >= VEST_REFLECTIVE_THRESH
+    bright_ratio = float(bright_mask.sum()) / max(gray.size, 1)
+    # Check if bright pixels have a horizontal-stripe pattern:
+    # a real reflective strip has row-mean >> col-mean variance ratio.
+    signal_b_pass = False
+    if bright_ratio >= VEST_REFLECTIVE_RATIO:
+        row_means = bright_mask.mean(axis=1)   # per-row fraction of bright px
+        col_means = bright_mask.mean(axis=0)
+        h_var = float(np.var(row_means))       # high = horizontal banding
+        v_var = float(np.var(col_means)) + 1e-9
+        signal_b_pass = (h_var / v_var >= 2.0) or (bright_ratio >= 0.20)
+
+    # ── Signal C: Torso placement gate ───────────────────────────────────────
+    # CHANGED: default is now False when no worker context is available.
+    # An orphaned vest with no nearby associated worker is almost certainly a
+    # bright construction material (blue bucket, tarp, paint can, foam block)
+    # rather than a real person — Signal A or B must compensate.
+    # If a nearest worker exists, the torso placement check runs as before.
+    if worker_box is not None:
+        wx1, wy1, wx2, wy2 = worker_box
+        wh = max(wy2 - wy1, 1.0)
+        vcx = (vx1 + vx2) / 2.0
+        vcy = (vy1 + vy2) / 2.0
+        torso_y_top    = wy1 + wh * VEST_TORSO_TOP
+        torso_y_bottom = wy1 + wh * VEST_TORSO_BOTTOM
+        # Check both horizontal containment AND vertical torso band
+        in_torso = (wx1 <= vcx <= wx2) and (torso_y_top <= vcy <= torso_y_bottom)
+        signal_c_pass = in_torso
+    else:
+        # No known worker nearby — only the mandatory colour/reflective signals
+        # can save this vest. Buckets and tarps almost always fail Signal A/B.
+        signal_c_pass = False
+
+    # ── Final gate ───────────────────────────────────────────────────────────
+    # The vest survives if ANY of the signals pass.
+    # All-fail means it is likely a white shirt, cloth, or bright material.
+    return signal_a_pass or signal_b_pass or signal_c_pass
+
+
+
 # ── WBF (unchanged — exact same logic as ensemble_batch.py) ───────────────────
 def iou_box(a, b):
     x1, y1 = max(a[0], b[0]), max(a[1], b[1])
@@ -592,10 +1230,9 @@ def is_valid_worker(
     shorter image dimension in both width and height.
 
     ── Signal 3: Single-model agreement gate ────────────────────────────────
-    One-model-only detections require higher confidence. Cement bags with shape
     similarity are typically caught by only one model at 0.25–0.45.
 
-    ── Signal 4: Hard-landscape reject (aspect > 3.2) ───────────────────────
+    ── Signal 4: Hard-landscape reject (aspect > 3.5) ───────────────────────
     Pipes, long brick stacks, and tarpaulin ridges — never a person.
 
     ── Signal 5: Portrait check (model-count independent) ───────────────────
@@ -608,7 +1245,7 @@ def is_valid_worker(
     No single worker spans > 45% of frame width. Wider = material pile.
 
     ── Signal 7: Height floor ───────────────────────────────────────────────
-    Workers must occupy ≥ 6–8% of image height. Below this = pixel noise or
+    Workers must occupy ≥ 6.5% of image height. Below this = pixel noise or
     distant objects that look like construction materials at low resolution.
 
     ── Signal 8: Area ceiling ───────────────────────────────────────────────
@@ -616,16 +1253,26 @@ def is_valid_worker(
     wrap multi-object regions, not a single standing worker.
     """
     # ── PPE fast-bypass ────────────────────────────────────────────────────
+    # If PPE is confirmed nearby, we skip the geometric "person-hood" gates.
+    # Confirmed PPE is the single most reliable indicator of a worker.
     if nearby_ppe:
         return True
 
     x1, y1, x2, y2 = wbox
     bw = max(x2 - x1, 1.0)
     bh = max(y2 - y1, 1.0)
-    aspect = bw / bh   # > 1.0 = landscape; < 1.0 = portrait (person = portrait)
+    aspect = bw / bh
+
+    # ── Signal 9: Orphaned Worker Suppression (Material Reject) ───────────
+    # If only one model sees the worker and no PPE is nearby, it's often 
+    # a cement bag, orange bucket, or brick stack. Require higher confidence.
+    if model_count == 1 and not nearby_ppe:
+        # Increase required score for orphaned portrait blobs
+        if score < 0.48:
+            return False
 
     # ── Signal 4: hard-landscape reject ───────────────────────────────────
-    if aspect > 3.2:
+    if aspect > 3.5:
         return False
 
     # ── Signal 6: box-width ceiling ───────────────────────────────────────
@@ -637,8 +1284,13 @@ def is_valid_worker(
         return False
 
     # ── Signal 7: height floor ─────────────────────────────────────────────
-    min_h_frac = 0.06 if condition == "S4_crowded" else 0.08
-    if bh < img_h * min_h_frac and score < 0.60:
+    if condition == "S4_crowded":
+        min_h_frac = 0.055
+    elif condition in ("S2_dusty", "S3_low_light"):
+        min_h_frac = 0.060
+    else:
+        min_h_frac = 0.065   # S1_normal
+    if bh < img_h * min_h_frac and score < 0.58:
         return False
 
     # ── Signal 1: aspect ratio per condition ───────────────────────────────
@@ -670,7 +1322,7 @@ def is_valid_worker(
         elif condition == "S4_crowded":
             single_thresh = 0.40
         else:
-            single_thresh = 0.50   # S1_normal: cement bags rarely score > 0.50 solo
+            single_thresh = 0.40   # S1_normal: balanced recall vs. material FP
         if score < single_thresh:
             return False
 
@@ -731,18 +1383,18 @@ def associate_ppe_to_workers(raw: list) -> list:
         wcy = (by1 + by2) / 2
 
         # Expanded search rectangles
-        h_pad      = bw * 0.15          # horizontal margin
-        h_head     = bh * 0.10          # allow helmet slightly above worker box
+        h_pad      = bw * 0.18          # increased 0.15 → 0.18
+        h_head     = bh * 0.15          # increased 0.10 → 0.15 (better steep angle support)
 
         helm_x1 = bx1 - h_pad
         helm_x2 = bx2 + h_pad
-        helm_y1 = by1 - h_head          # 10 % headroom above box
+        helm_y1 = by1 - h_head          # 15 % headroom above box
         helm_y2 = by1 + bh * 0.75      # upper 75 % of worker height
 
         vest_x1 = bx1 - h_pad
         vest_x2 = bx2 + h_pad
         vest_y1 = by1
-        vest_y2 = by2 + bh * 0.20      # 20 % below box bottom
+        vest_y2 = by2 + bh * 0.25      # increased 0.20 → 0.25 (oversized jackets)
 
         # ── Helmet matching ──────────────────────────────────────────────────
         best_hi, best_h_dist = -1, float("inf")
@@ -785,7 +1437,17 @@ def associate_ppe_to_workers(raw: list) -> list:
         result[wi]["has_helmet"] = has_helmet
         result[wi]["has_vest"]   = has_vest
 
-    return result
+    # Suppress matched PPE boxes — each matched item is already represented by
+    # has_helmet / has_vest on the parent worker box.  Rendering both the worker
+    # box AND the vest/helmet box on the same person causes the stacked-boxes
+    # visual clutter seen in the overlay.  Only orphaned PPE (no matched worker)
+    # is kept as a standalone detection so the frontend can flag it separately.
+    for mi in matched_helmets:
+        result[mi]["_matched"] = True
+    for mi in matched_vests:
+        result[mi]["_matched"] = True
+
+    return [d for d in result if not d.get("_matched", False)]
 
 
 # ── Class-ID helpers (module-level, computed once after load_models) ──────────
@@ -811,13 +1473,13 @@ def _has_nearby_ppe(wbox: list, raw: list) -> bool:
     bx1, by1, bx2, by2 = wbox
     bw  = bx2 - bx1
     bh  = by2 - by1
-    pad = bw * 0.15
-    # Helmet zone: upper 75% + 10% headroom above
+    pad = bw * 0.18
+    # Helmet zone: upper 75% + 15% headroom above
     hx1, hx2 = bx1 - pad, bx2 + pad
-    hy1, hy2 = by1 - bh * 0.10, by1 + bh * 0.75
-    # Vest zone: full height + 20% below
+    hy1, hy2 = by1 - bh * 0.15, by1 + bh * 0.75
+    # Vest zone: full height + 25% below
     vx1, vx2 = bx1 - pad, bx2 + pad
-    vy1, vy2 = by1, by2 + bh * 0.20
+    vy1, vy2 = by1, by2 + bh * 0.25
     for d in raw:
         if d["cls"] not in hids and d["cls"] not in vids:
             continue
@@ -881,15 +1543,9 @@ def run_inference(
     #   Worker WBF IoU lowered (0.60) — noisy boxes shift slightly frame-to-frame
     #   so we allow slightly looser merging. NMS standard.
     # S1_normal / S2_dusty: standard params.
-    if condition == "S4_crowded":
-        wbf_iou_cond = {0: 0.45, 1: 0.50, 2: 0.72}
-        base_nms_iou = 0.65
-    elif condition == "S3_low_light":
-        wbf_iou_cond = {0: 0.40, 1: 0.45, 2: 0.60}
-        base_nms_iou = NMS_IOU
-    else:
-        wbf_iou_cond = dict(WBF_IOU)
-        base_nms_iou = NMS_IOU
+    # Use centralized WBF_IOU_BY_CONDITION table (all thresholds in one place)
+    wbf_iou_cond = dict(WBF_IOU_BY_CONDITION.get(condition, WBF_IOU))
+    base_nms_iou = 0.65 if condition == "S4_crowded" else NMS_IOU
 
     # Condition-specific post-WBF confidence gate (relaxed in dark/dusty scenes)
     cond_conf_gate = POST_WBF_BY_CONDITION.get(condition, POST_WBF_GLOBAL)
@@ -914,50 +1570,112 @@ def run_inference(
     else:
         nms_iou = base_nms_iou
 
-    # ── YOLOv11 (primary) ────────────────────────────────────────────────────
+    # ── Model 1: Primary (YOLOv11) ──────────────────────────────────────────
+    t_inf_start = time.perf_counter()
     r11 = model_v11.predict(
         img_bgr, device=DEVICE, verbose=False,
         conf=pre_conf, iou=nms_iou, half=USE_HALF,
-        agnostic_nms=False,   # class-aware NMS — helmet never suppresses worker
+        agnostic_nms=False,
     )[0]
+    t_inf_1 = (time.perf_counter() - t_inf_start) * 1000
+
     boxes11, scores11, labels11 = [], [], []
     for box in (r11.boxes or []):
         boxes11.append(box.xyxy[0].cpu().numpy().tolist())
         scores11.append(float(box.conf[0]))
         labels11.append(int(box.cls[0]))
 
-    # ── Early-exit check or full WBF ─────────────────────────────────────────
-    # Crowded scenes always run full ensemble — more workers means more cases
-    # where one model misses, so early-exit is disabled for S4_crowded.
-    if model_v26 is not None:
-        force_ensemble = (condition == "S4_crowded")
-        early_exit = (
-            not force_ensemble and
-            len(scores11) >= 1 and
-            all(s >= max(EARLY_EXIT_CONF, pre_conf + 0.1) for s in scores11)
+    # ── Signal 10: Model-1 High-Confidence Bypass (Latency optimization) ────
+    # In clear scenes (S1_normal) with very high-confidence detections, skipping
+    # the second model significantly reduces lag without impacting safety.
+    # DISABLED in: S4_crowded, S2_dusty, S3_low_light, or busy scenes (>8 dets).
+    force_ensemble = (condition in ("S4_crowded", "S2_dusty", "S3_low_light"))
+    
+    can_bypass = False
+    if not force_ensemble and len(scores11) > 0 and len(scores11) < 8:
+        # Require all workers to be high-confidence for bypass
+        worker_scores = [s for s, l in zip(scores11, labels11) if l in _worker_ids()]
+        if worker_scores and all(sc > EARLY_EXIT_CONF for sc in worker_scores):
+            can_bypass = True
+
+    used_ensemble = False
+    t_inf_2 = 0.0
+    t_wbf = 0.0
+    
+    if model_v26 is not None and not can_bypass:
+        t_inf_2_start = time.perf_counter()
+        r26 = model_v26.predict(
+            img_bgr, device=DEVICE, verbose=False,
+            conf=pre_conf, iou=nms_iou, half=USE_HALF,
+            agnostic_nms=False,
+        )[0]
+        t_inf_2 = (time.perf_counter() - t_inf_2_start) * 1000
+
+        boxes26 = [b.xyxy[0].cpu().numpy().tolist() for b in (r26.boxes or [])]
+        scores26 = [float(b.conf[0]) for b in (r26.boxes or [])]
+        labels26 = [int(b.cls[0]) for b in (r26.boxes or [])]
+
+        t_wbf_start = time.perf_counter()
+        raw = wbf_fuse(
+            [(boxes11, scores11, labels11), (boxes26, scores26, labels26)],
+            w, h, iou_override=wbf_iou_cond, conf_gate=cond_conf_gate,
         )
-        if early_exit:
-            raw = [{"box": b, "score": s, "cls": l, "n_models": 1}
-                   for b, s, l in zip(boxes11, scores11, labels11)]
-            used_ensemble = False
-        else:
-            r26 = model_v26.predict(
-                img_bgr, device=DEVICE, verbose=False,
-                conf=pre_conf, iou=nms_iou, half=USE_HALF,
+        t_wbf = (time.perf_counter() - t_wbf_start) * 1000
+        used_ensemble = True
+    else:
+        # Model 1 results only
+        t_wbf_start = time.perf_counter()
+        raw = []
+        for b, s, l in zip(boxes11, scores11, labels11):
+            if s >= cond_conf_gate.get(l, 0.20):
+                raw.append({"box": b, "score": s, "cls": l, "n_models": 1})
+        t_wbf = (time.perf_counter() - t_wbf_start) * 1000
+
+    # ── Elevated region supplemental pass ────────────────────────────────────
+    # Runs on the top 35% of the frame in ALL scene modes to catch workers on
+    # scaffolding, elevated walkways, and wall tops that get missed by the full-
+    # frame pass because they are small and score below the full-frame pre_conf.
+    # Using a lower confidence (pre_conf × 0.80) maximises recall in that zone.
+    # The top-region detections are converted back to full-frame coordinates and
+    # merged into `raw` via WBF before the false-positive filter runs.
+    _elev_h = int(h * 0.35)
+    if _elev_h >= 48 and model_v11 is not None:
+        _elev_conf = max(pre_conf * 0.80, 0.12)
+        try:
+            _elev_crop = img_bgr[0:_elev_h, 0:w]
+            _re = model_v11.predict(
+                _elev_crop, device=DEVICE, verbose=False,
+                conf=_elev_conf, iou=nms_iou, half=USE_HALF,
                 agnostic_nms=False,
             )[0]
-            boxes26 = [b.xyxy[0].cpu().numpy().tolist() for b in (r26.boxes or [])]
-            scores26 = [float(b.conf[0]) for b in (r26.boxes or [])]
-            labels26 = [int(b.cls[0]) for b in (r26.boxes or [])]
-            raw = wbf_fuse(
-                [(boxes11, scores11, labels11), (boxes26, scores26, labels26)],
-                w, h, iou_override=wbf_iou_cond, conf_gate=cond_conf_gate,
-            )
-            used_ensemble = True
-    else:
-        raw = [{"box": b, "score": s, "cls": l, "n_models": 1}
-               for b, s, l in zip(boxes11, scores11, labels11)]
-        used_ensemble = False
+            _eb, _es, _el = [], [], []
+            for _b in (_re.boxes or []):
+                _bx = _b.xyxy[0].cpu().numpy().tolist()
+                # y-coordinate shift: crop starts at y=0 → full frame unchanged
+                _eb.append(_bx)
+                _es.append(float(_b.conf[0]))
+                _el.append(int(_b.cls[0]))
+            if _eb:
+                # Merge elevated detections with existing raw list via WBF
+                # Assemble raw as a pseudo-model-0 input for wbf_fuse
+                _raw_boxes  = [d["box"] for d in raw]
+                _raw_scores = [d["score"] for d in raw]
+                _raw_labels = [d["cls"] for d in raw]
+                _merged = wbf_fuse(
+                    [(_raw_boxes, _raw_scores, _raw_labels), (_eb, _es, _el)],
+                    w, h, iou_override=wbf_iou_cond, conf_gate=cond_conf_gate,
+                )
+                if _merged:
+                    raw = _merged
+                else:
+                    # Fallback: just append elevated boxes that don't overlap raw
+                    _wids = _worker_ids()
+                    for _b2, _s2, _l2 in zip(_eb, _es, _el):
+                        # Only add if no existing box overlaps ≥ 0.40 IoU
+                        if not any(iou_box(_b2, d["box"]) >= 0.40 for d in raw if d["cls"] == _l2):
+                            raw.append({"box": _b2, "score": _s2, "cls": _l2, "n_models": 1})
+        except Exception as _ee:
+            logger.debug(f"[elevated_pass] skipped: {_ee}")
 
     # ── Worker false-positive filter ──────────────────────────────────────────
     # IMPORTANT: PPE proximity is checked HERE, before the worker filter, so
@@ -989,10 +1707,81 @@ def run_inference(
             return True
         raw = [d for d in raw if _passes(d)]
 
+    # ── Post-WBF duplicate suppression (IoU + containment) ───────────────────
+    # Two boxes of the same class are considered duplicates when EITHER:
+    #   (a) standard IoU >= POST_WBF_DEDUP_IOU  — catches offset duplicates
+    #   (b) the smaller box has >= DEDUP_CONTAIN_THRESH of its area inside the
+    #       larger box — catches size-mismatched boxes (tight vs full-body) that
+    #       produce IoU of only ~0.25-0.39 and slip past IoU-only dedup.
+    def _is_duplicate(a: list, b: list, cls_id: int = 0) -> bool:
+        if iou_box(a, b) >= POST_WBF_DEDUP_IOU.get(cls_id, 0.35):
+            return True
+        x1 = max(a[0], b[0]); y1 = max(a[1], b[1])
+        x2 = min(a[2], b[2]); y2 = min(a[3], b[3])
+        inter = max(0.0, x2 - x1) * max(0.0, y2 - y1)
+        if inter == 0.0:
+            return False
+        area_a = max((a[2]-a[0]) * (a[3]-a[1]), 1e-6)
+        area_b = max((b[2]-b[0]) * (b[3]-b[1]), 1e-6)
+        return (inter / min(area_a, area_b)) >= DEDUP_CONTAIN_THRESH
+
+    deduped: list = []
+    for cls_id in (0, 1, 2):
+        cls_boxes = sorted(
+            [d for d in raw if d["cls"] == cls_id],
+            key=lambda d: -d["score"],
+        )
+        kept: list = []
+        for cand in cls_boxes:
+            if any(_is_duplicate(cand["box"], k["box"], cls_id) for k in kept):
+                continue   # near-duplicate — drop the lower-confidence box
+            kept.append(cand)
+        deduped.extend(kept)
+    # Preserve any classes not in 0/1/2 (future-proofing)
+    deduped.extend(d for d in raw if d["cls"] not in (0, 1, 2))
+    raw = deduped
+
+    # ── Safety vest cascade validation (multi-signal gate) ───────────────────
+    # Reject vests that fail all three signals (Color + Reflective + Torso).
+    # This targets white shirts, cloth, foam, and random bright construction
+    # materials while preserving dusty/faded/reflective real PPE.
+    vest_cls_ids = _vest_ids()
+    assoc_workers = [d for d in raw if d["cls"] in _worker_ids()]
+
+    def _nearest_worker_box(vbox: list) -> list | None:
+        """Return the box of the closest worker to this vest centroid, or None."""
+        vcx = (vbox[0] + vbox[2]) / 2.0
+        vcy = (vbox[1] + vbox[3]) / 2.0
+        best_dist = float("inf")
+        best_box  = None
+        for w in assoc_workers:
+            wcx = (w["box"][0] + w["box"][2]) / 2.0
+            wcy = (w["box"][1] + w["box"][3]) / 2.0
+            dist = ((vcx - wcx)**2 + (vcy - wcy)**2) ** 0.5
+            if dist < best_dist:
+                best_dist = dist
+                best_box  = w["box"]
+        return best_box
+
+    validated_raw = []
+    for det in raw:
+        if det["cls"] in vest_cls_ids:
+            nearest_w = _nearest_worker_box(det["box"])
+            if not validate_safety_vest(img_bgr, det["box"], nearest_w, condition):
+                continue   # rejected by multi-signal gate
+        validated_raw.append(det)
+    raw = validated_raw
+
     # ── Worker-to-PPE association (post-WBF, pre-return) ─────────────────────
     raw = associate_ppe_to_workers(raw)
 
-    return raw, used_ensemble
+    t_perf = {
+        "inf_1_ms": round(t_inf_1, 1),
+        "inf_2_ms": round(t_inf_2, 1),
+        "wbf_ms":   round(t_wbf, 1),
+        "bypass":   can_bypass and not force_ensemble
+    }
+    return raw, used_ensemble, t_perf
 
 
 # ── Worker temporal confirmation (video export only) ──────────────────────────
@@ -1246,17 +2035,22 @@ def _build_det_list(detections: list) -> list:
 @app.get("/api/health")
 def health():
     return {
-        "status":   "ok",
-        "mode":     mode_name,
-        "device":   DEVICE,
-        "fp16":     USE_HALF,
-        "runtime_dir": str(RUNTIME_DIR),
-        "model_dir": str(MODEL_DIR),
-        "classes":  list(cls_map.values()),
-        "ensemble": model_v26 is not None,
-        "turner_ai_enabled": mistral_enabled or (ai_model is not None),
-        "mistral_enabled": mistral_enabled,
-        "mistral_model": MISTRAL_MODEL if mistral_enabled else None,
+        "status":          "ok",
+        "mode":            mode_name,
+        "device":          DEVICE,
+        "fp16":            USE_HALF,
+        "model_loaded":    model_v11 is not None,
+        "model_v11":       model_v11 is not None,
+        "model_v26":       model_v26 is not None,
+        "runtime_dir":     str(RUNTIME_DIR),
+        "model_dir":       str(MODEL_DIR),
+        "classes":         list(cls_map.values()),
+        "ensemble":        model_v26 is not None,
+        "scene_condition": _scene_tracker.current,
+        "timestamp":       time.time(),
+        "turner_ai_enabled":    mistral_enabled or (ai_model is not None),
+        "mistral_enabled":      mistral_enabled,
+        "mistral_model":        MISTRAL_MODEL if mistral_enabled else None,
         "google_api_key_present": bool(AI_API_KEY),
     }
 
@@ -1295,6 +2089,21 @@ async def detect_image(
         condition=condition
     )
 
+    # ── Update GeoAI shared state ─────────────────────────────────────────────
+    global latest_frame_jpeg, detection_stats
+    try:
+        _, _buf = cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, 75])
+        latest_frame_jpeg = bytes(_buf)
+    except Exception:
+        pass
+    detection_stats = {
+        "total_workers":        class_counts.get("worker", 0),
+        "helmets_detected":     class_counts.get("helmet", 0),
+        "vests_detected":       class_counts.get("safety_vest", 0),
+        "proximity_violations": 0,
+        "scene":                condition,
+    }
+
     return {
         "detections":   det_list,
         "class_counts": class_counts,
@@ -1308,59 +2117,157 @@ async def detect_image(
 
 @app.post("/api/detect/frame")
 async def detect_frame(
-    image_b64:  str   = Form(...),
-    condition:  str   = Form(default="S1_normal"),
+    image_b64:      str   = Form(...),
+    condition:      str   = Form(default="S1_normal"),
+    auto_condition: str   = Form(default="1"),   # "1" = let backend classify scene
     # Per-class thresholds sent as JSON strings from the frontend settings panel.
     # Example: class_conf='{"worker":0.20,"helmet":0.30,"vest":0.18}'
-    class_conf: str   = Form(default="{}"),
-    nms_iou:    str   = Form(default="{}"),
-    wbf_iou:    str   = Form(default="{}"),
-    clahe:      str   = Form(default="1"),
-    clahe_clip: float = Form(default=2.0),
+    class_conf:    str   = Form(default="{}"),
+    nms_iou:       str   = Form(default="{}"),
+    wbf_iou:       str   = Form(default="{}"),
+    clahe:         str   = Form(default="1"),
+    clahe_clip:    float = Form(default=2.0),
+    # Extra fields sent by frontend — accepted here so FastAPI doesn't 422
+    zone_poly:     str   = Form(default=""),
+    reset_tracker: str   = Form(default="0"),
+    model:         str   = Form(default=""),
 ):
     """Video / webcam live mode — base64 frame in, JSON detections out.
-    The frontend draws overlays; we never re-encode an annotated image here."""
+    The frontend draws overlays; we never re-encode an annotated image here.
+
+    auto_condition:
+      '1' (default) — server runs classify_scene_fast() (Toni's original module)
+          with SceneConditionTracker hysteresis and overrides any condition value
+          sent by the client. The stabilised condition is returned in the response.
+      '0' — use the condition value sent by the client (manual override).
+    """
     t0 = time.perf_counter()
+
+    # ── Decode frame ──────────────────────────────────────────────────────────
     try:
         data = base64.b64decode(image_b64.split(",")[-1])
         arr  = np.frombuffer(data, np.uint8)
         img  = cv2.imdecode(arr, cv2.IMREAD_COLOR)
     except Exception:
-        return JSONResponse({"error": "Invalid base64 image"}, status_code=400)
+        return JSONResponse({"error": "Invalid base64 image", "detections": [],
+                             "total": 0, "valid_workers": []}, status_code=400)
     if img is None:
-        return JSONResponse({"error": "Could not decode frame"}, status_code=400)
+        return JSONResponse({"error": "Could not decode frame", "detections": [],
+                             "total": 0, "valid_workers": []}, status_code=400)
 
-    cc  = json.loads(class_conf) if class_conf else {}
-    ni  = json.loads(nms_iou)    if nms_iou    else {}
-    wi  = json.loads(wbf_iou)    if wbf_iou    else {}
+    try:
+        cc  = json.loads(class_conf) if class_conf and class_conf != "{}" else {}
+        ni  = json.loads(nms_iou)    if nms_iou    and nms_iou    != "{}" else {}
+        wi  = json.loads(wbf_iou)    if wbf_iou    and wbf_iou    != "{}" else {}
+    except json.JSONDecodeError:
+        cc, ni, wi = {}, {}, {}
+
     use_clahe = clahe not in ("0", "false", "False")
+    use_auto  = auto_condition not in ("0", "false", "False")
 
-    detections, used_ensemble = await run_in_threadpool(
-        run_inference, img, condition, PRE_CONF,
-        cc, ni, wi, use_clahe, clahe_clip,
-    )
+    # ── Auto scene classification ─────────────────────────────────────────────
+    # classify_scene_fast() caches the expensive model pass every SCENE_CACHE_FRAMES
+    # frames; image-stats (brightness/haze) run every frame.  SceneConditionTracker
+    # applies hysteresis: 3 consecutive S4 signals to enter, 5 to exit crowded mode.
+    active_condition = condition
+    try:
+        if use_auto and model_v11 is not None:
+            active_condition = await run_in_threadpool(
+                classify_scene_fast, img, model_v11, DEVICE, USE_HALF
+            )
+    except Exception as _e:
+        logger.warning(f"[classify_scene_fast] failed: {_e} — using {condition}")
+        active_condition = condition
+
+    # ── Inference ────────────────────────────────────────────────────────────
+    try:
+        detections, used_ensemble, perf_metrics = await run_in_threadpool(
+            run_inference, img, active_condition, PRE_CONF,
+            cc, ni, wi, use_clahe, clahe_clip,
+        )
+    except Exception as _e:
+        logger.error(f"[run_inference] failed: {_e}", exc_info=True)
+        return JSONResponse({
+            "status":        "error",
+            "error":         str(_e),
+            "detections":    [],
+            "total":         0,
+            "valid_workers": [],
+            "condition":     active_condition,
+            "elapsed_ms":    round((time.perf_counter() - t0) * 1000),
+        }, status_code=200)   # 200 so frontend doesn't show FAILED TO FETCH
 
     det_list   = _build_det_list(detections)
     elapsed_ms = round((time.perf_counter() - t0) * 1000)
 
-    # Log metrics for analytics
-    class_counts = {}
-    for d in det_list:
-        class_counts[d["class"]] = class_counts.get(d["class"], 0) + 1
-    
-    database.log_metrics(
-        worker_count=class_counts.get("worker", 0),
-        helmet_count=class_counts.get("helmet", 0),
-        vest_count=class_counts.get("safety_vest", 0) or class_counts.get("safety-vest", 0),
-        compliance_score=round(sum(1 for d in detections if d.get("has_helmet") and d.get("has_vest")) / max(class_counts.get("worker", 1), 1) * 100, 1),
-        condition=condition
-    )
+    # ── Build valid_workers list for PPEStatusPanel ───────────────────────────
+    worker_names = {"worker", "person"}
+    valid_workers: list[dict] = []
+    for idx, d in enumerate(det_list):
+        if d["class"] not in worker_names:
+            continue
+        has_h = d.get("has_helmet")
+        has_v = d.get("has_vest")
+        compliant  = bool(has_h and has_v)
+        violation  = has_h is not None and has_v is not None and not compliant
+        vtypes: list[str] = []
+        if has_h is False: vtypes.append("NO HELMET")
+        if has_v is False: vtypes.append("NO VEST")
+        valid_workers.append({
+            "worker_id":         idx,
+            "confidence":        d["confidence"],
+            "has_helmet":        has_h,
+            "has_vest":          has_v,
+            "helmet_confidence": d["confidence"] if has_h else 0.0,
+            "vest_confidence":   d["confidence"] if has_v else 0.0,
+            "ppe_compliant":     compliant,
+            "ppe_violation":     violation,
+            "violation_type":    vtypes,
+            "box":               d["box"],
+        })
+
+    # ── Log metrics ───────────────────────────────────────────────────────────
+    try:
+        class_counts: dict[str, int] = {}
+        for d in det_list:
+            class_counts[d["class"]] = class_counts.get(d["class"], 0) + 1
+        database.log_metrics(
+            worker_count=class_counts.get("worker", 0),
+            helmet_count=class_counts.get("helmet", 0),
+            vest_count=class_counts.get("safety_vest", 0) or class_counts.get("safety-vest", 0),
+            compliance_score=round(
+                sum(1 for w in valid_workers if w["ppe_compliant"])
+                / max(len(valid_workers), 1) * 100, 1),
+            condition=active_condition
+        )
+    except Exception as _db_e:
+        logger.warning(f"[log_metrics] {_db_e}")
+
+    # ── Update GeoAI shared state ─────────────────────────────────────────────
+    global latest_frame_jpeg, detection_stats
+    try:
+        _, _buf = cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, 75])
+        latest_frame_jpeg = bytes(_buf)
+    except Exception:
+        pass
+    detection_stats = {
+        "total_workers":        class_counts.get("worker", 0),
+        "helmets_detected":     class_counts.get("helmet", 0),
+        "vests_detected":       class_counts.get("safety_vest", 0),
+        "proximity_violations": 0,
+        "scene":                active_condition,
+    }
 
     return {
-        "detections": det_list,
-        "total":      len(det_list),
-        "elapsed_ms": elapsed_ms,
-        "mode":       "ensemble-wbf" if used_ensemble else mode_name,
+        "status":         "ok",
+        "detections":     det_list,
+        "total":          len(det_list),
+        "valid_workers":  valid_workers,
+        "elapsed_ms":     elapsed_ms,
+        "perf_metrics":   perf_metrics,
+        "mode":           "ensemble-wbf" if used_ensemble else (mode_name if not perf_metrics.get("bypass") else "high-conf-bypass"),
+        "condition":      active_condition,
+        "condition_auto": use_auto,
     }
 
 

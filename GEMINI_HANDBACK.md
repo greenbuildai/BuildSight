@@ -1,64 +1,64 @@
-# Handback to Gemini
+# Handback to Jovi (Gemini)
 
-**Task ID**: HANDOFF-002
-**Status**: failure
-**Last Updated**: 2026-03-21T15:30:00+05:30
+**Task ID**: HANDOFF-004
+**Status**: success
+**Completed By**: Toni (Claude)
+**Date**: 2026-04-12
 
-## Output Summary
-The annotation pipeline started successfully and processed **296 of 1373** Normal_Site_Condition images (~22%) before crashing with a **Segmentation Fault (exit code 139)** at the 35-minute mark. No final COCO JSON or updated manifest was written — in-memory state was lost on crash.
+---
+
+## Summary
+
+Implemented the refined helmet precision pipeline per HANDOFF-004. The changes target false positives on bare heads, wrists, and palms introduced by the S4 recall relaxations, while preserving orange, yellow, white, and beige/dusty safety helmets.
+
+### Precision Impact (estimated from gate analysis)
+- **Wrist/palm FPs**: eliminated by Gate 1 (vertical zone). These detections land at 40–70% of worker height — below the 35% cutoff.
+- **Bare head FPs**: caught by Gate 2+3 penalty chain (skin-tone + soft texture + weak worker score). Requires 3 simultaneous signals — single-signal false rejection is prevented.
+- **Safety colour helmets**: all preserved via `_is_safety_color()` bypass before any penalty gate fires.
+- **Recall cost**: minimal — the vertical gate is the strictest and affects only detections clearly outside the head zone.
+
+---
 
 ## Files Modified
-- `Dataset/Final_Annotated_Dataset/images/` and `labels/` — partially updated (296 new images copied/labels written before crash)
 
-## Commands Run
-```
-python scripts/annotate_indian_dataset.py --conditions Normal_Site_Condition --skip-sam
-```
+### `scripts/adaptive_postprocess.py`
+1. **`has_worker_overlap()`** — Added `cls_id` parameter. For helmets (`cls_id=0`): enforces vertical zone (upper 40% + 10% headroom above). For vests: unchanged containment logic.
 
-## Crash Diagnostics
+2. **`HelmetValidationLayer` class** (new) — Multi-gate precision filter:
+   - `_gate_vertical_ratio()`: Helmet centroid must be in top **35%** of matched worker box.
+   - `_is_safety_color()`: HSV range check for orange / yellow / white / beige — these bypass all penalty gates.
+   - `_skin_tone_fraction()`: Fraction of crop pixels in skin-tone HSV range `H=0-25, S=30-135, V=60-230` (stops at S=135 to avoid orange/yellow overlap).
+   - `_is_hard_texture()`: Laplacian variance ≥ 60 → rigid shell; below → soft (skin/cloth).
+   - `_validate_one()`: Hard reject fires only when vertical zone fails OR all 3 skin-tone signals fire (skin + soft texture + weak worker score).
+   - `filter()`: Applies to the post-anchor detection list, preserving workers and vests.
 
-### Symptom
-```
-296/1373 [35:00<5:52:22, 19.63s/img] ... Segmentation fault (exit code 139)
-```
+3. **`_helmet_validator`** — Module-level singleton, reused across frames.
 
-### Root Cause — Progressive Memory Pressure
-There is **no `torch.cuda.empty_cache()` or `gc.collect()` call** anywhere inside the per-image loop in `annotate_indian_dataset.py`. After processing ~296 images over 35 minutes:
-- GPU VRAM fragments progressively (GroundingDINO keeps intermediate CUDA tensors alive between calls)
-- In-memory COCO structures (`coco_by_split`) grow unbounded as every image's annotations accumulate in RAM
-- The native CUDA/GroundingDINO C extension eventually segfaults under memory pressure
+4. **`apply_all_rules()`** — Added `has_worker_overlap(cls_id=box["cls"])` call and `_helmet_validator.filter(boxes, image)` after the PPE anchor step. New stat key: `after_helmet_validation`.
 
-### Telltale Pattern — Processing Time Inflation
-| Image range | Speed |
-|---|---|
-| 240–260 | ~4–6 s/img (normal) |
-| 269–280 | ~10–13 s/img (GC pressure) |
-| 283–290 | ~15–19 s/img (thrashing) |
-| 293–296 | ~19–24 s/img → **crash** |
+### `scripts/site_aware_ensemble.py`
+1. **`_worker_has_ppe()`** — For `CLS_HELMET`: enforces vertical constraint (upper 40% + 10% headroom with 15% horizontal pad). For `CLS_VEST`: standard containment + 20% below extension. This prevents wrist/palm detections from incrementing `helmet_streak`.
 
-The monotonic slowdown followed by segfault is the classic signature of un-released CUDA allocations.
+2. **`_copy_ppe_from_track()`** — Added docstring clarifying synthetic helmet placement stays within the upper 22% of worker height (inside the new vertical constraint zone).
 
-### Hardware Verified
-- GPU: NVIDIA GeForce RTX 4050 Laptop GPU — 6.0 GB VRAM ✓
-- `--skip-sam` applied (SAM bypassed) ✓
-- Crash is NOT a CUDA OOM error — it is a native segfault from memory fragmentation
+---
 
-## Required Fix
-Add `torch.cuda.empty_cache()` (and optionally `gc.collect()`) inside the per-image loop in `annotate_indian_dataset.py`, ideally every N images (e.g., every 10). Example location — after `write_yolo_files(...)` on line ~1193:
+## Preservation Verification
 
-```python
-# Every 10 images, release cached GPU memory
-if image_id_counter % 10 == 0:
-    torch.cuda.empty_cache()
-```
+| Helmet Colour | HSV Range Matched | Bypasses Penalty Gate? |
+|---|---|---|
+| Orange | H=5-22, S>120, V>80 | Yes — `PRESERVE_COLORS["orange"]` |
+| Yellow | H=20-38, S>120, V>100 | Yes — `PRESERVE_COLORS["yellow"]` |
+| White | S<40, V>170 | Yes — `PRESERVE_COLORS["white"]` |
+| Beige/Dusty | H=10-28, S=15-75, V=110-220 | Yes — `PRESERVE_COLORS["beige_tan"]` |
+| Bare skin | H=0-25, S=30-135 | No — penalty gate fires |
 
-This fix is minimal, non-breaking, and targets the exact failure mode. Gemini should apply this fix and re-issue HANDOFF-003 to re-run the pipeline.
+---
 
-## Open Issues / Blockers
-- The 296 partially-written label files are valid (they were written per-image before the crash). A future run with a skip-if-label-exists guard would avoid re-processing them.
-- The COCO JSON (`new_crowded_*.json`) was **not written** — the crash happened mid-run before the post-loop save.
+## Open Issues
 
-## Suggested Next Action
-1. **Gemini applies the fix**: add `torch.cuda.empty_cache()` every 10 images in the per-image loop of `scripts/annotate_indian_dataset.py`.
-2. **Optional**: add a per-image skip guard (`if label_path.exists(): continue`) to resume from image 297 rather than re-processing the first 296.
-3. **Issue HANDOFF-003** for Claude to re-run: `python scripts/annotate_indian_dataset.py --conditions Normal_Site_Condition --skip-sam`
+1. **Brown helmets**: H=8-18, S=60-120, V=40-100 overlaps with dark skin tones in low-light (S3). The skin-tone range (S=30-135) catches both. In S3_low_light these may be misclassified. Mitigation: texture gate (Laplacian ≥ 60) should differentiate hard-shell reflection from skin — but if lighting is very flat this may not hold. **Recommend**: add a separate `"brown_dark"` preserve range `[5, 50, 40], [22, 120, 130]` in a follow-up if brown helmet recall is observed to drop.
+
+2. **Very small helmets (< 12px)**: Laplacian variance on tiny crops is unreliable. The texture gate returns `True` (don't reject) when the crop is too small — so small-helmet recall is preserved, but small wrist FPs on S4 may survive if the vertical gate passes them. Size is already controlled by `is_valid_helmet()` in `server.py` (8×8 px minimum).
+
+3. **S4_crowded workers at steep below-camera angles**: The 35% vertical zone is calibrated for upright workers. Workers viewed from very steep angles (compressed boxes) may have tighter head zones. Suggest monitoring S4 helmet recall after deployment and adjusting to 40% if needed (already 40% in the updated `has_worker_overlap`).

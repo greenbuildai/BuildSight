@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
-import type { HeatmapUpdatePayload, ZoneCollection, ZoneFeature } from '../types/geoai'
+import type { HeatmapUpdatePayload, ZoneCollection, ZoneFeature, DynamicZone } from '../types/geoai'
 
 const SITE_CENTER: [number, number] = [10.81662, 78.66891]
 const INITIAL_ZOOM = 19
@@ -11,24 +11,26 @@ const CAMERA_FOV_SCALE = 1.16
 const LABEL_OFFSET_METERS: Record<string, [number, number]> = {
   high_risk_scaffolding: [0, 2.4],
   high_risk_staircase: [-1.1, 0.85],
+  excavation_zone: [-2.0, -1.0],
+  formwork_area: [2.0, 1.0],
   moderate_risk_interior: [0, 0],
   low_risk_parking: [1.1, 0],
 }
 
 const RISK_COLORS: Record<string, string> = {
-  CRITICAL: '#ff3b3b',
-  HIGH: '#ff7b00',
+  CRITICAL: '#ef4444', 
+  HIGH: '#f97316',
   MODERATE: '#ffd600',
-  LOW: '#00e676',
+  LOW: '#10b981',
   none: '#00b4d8',
 }
 
 const RISK_FILL_OPACITY: Record<string, number> = {
-  CRITICAL: 0.35,
-  HIGH: 0.25,
-  MODERATE: 0.18,
-  LOW: 0.12,
-  none: 0.08,
+  CRITICAL: 0.45,
+  HIGH: 0.35,
+  MODERATE: 0.25,
+  LOW: 0.15,
+  none: 0.1,
 }
 
 interface GeoAIMapProps {
@@ -40,6 +42,7 @@ interface GeoAIMapProps {
   showWorkers: boolean
   heatmapOpacity?: number
   viewMode: string
+  dynamicZones?: DynamicZone[]
 }
 
 interface OverlayMetadata {
@@ -98,46 +101,39 @@ function offsetLatLng(point: LatLngTuple, offsetMeters: [number, number]): LatLn
   ]
 }
 
-function scaleFromAnchor(point: LatLngTuple, anchor: LatLngTuple, scale: number): LatLngTuple {
-  if (Math.abs(scale - 1) < 0.0001) return point
-
-  const metersPerDegLat = 110574
-  const metersPerDegLon = getMetersPerDegreeLon(anchor[0])
-  const dx = (point[1] - anchor[1]) * metersPerDegLon
-  const dy = (point[0] - anchor[0]) * metersPerDegLat
-
-  return [
-    anchor[0] + (dy * scale) / metersPerDegLat,
-    anchor[1] + (dx * scale) / metersPerDegLon,
-  ]
+function denormalizeLatLng(point: LatLngTuple, center: LatLngTuple, rotationDelta: number, scale: number, offset: [number, number]): LatLngTuple {
+  // 1. Reverse offset
+  const pt1 = offsetLatLng(point, [-offset[0], -offset[1]])
+  // 2. Reverse scale
+  const pt2 = scaleLatLng(pt1, center, 1 / scale)
+  // 3. Reverse rotation
+  return rotateLatLng(pt2, center, -rotationDelta)
 }
 
-function computeOverlayCenter(features: ZoneFeature[]): LatLngTuple {
+function computeOverlayCenter(features: ZoneFeature[] | undefined): LatLngTuple {
+  if (!features || !Array.isArray(features) || features.length === 0) return SITE_CENTER;
+  
   const cornerPoints = features
-    .filter((feature) => feature.geometry.type === 'Point' && feature.properties.type === 'building_corner')
-    .map((feature) => {
-      const [lng, lat] = feature.geometry.coordinates as number[]
-      return [lat, lng] as LatLngTuple
-    })
+    .filter((feature) => feature.geometry?.type === 'Point' && feature.properties?.type === 'building_corner')
+    .map((f) => (f.geometry as any).coordinates as [number, number]);
 
-  if (cornerPoints.length) {
-    const lat = cornerPoints.reduce((sum, point) => sum + point[0], 0) / cornerPoints.length
-    const lng = cornerPoints.reduce((sum, point) => sum + point[1], 0) / cornerPoints.length
-    return [lat, lng]
+  if (cornerPoints.length === 0) {
+    const boundary = features.find((feature) => feature.properties?.zone === 'site_boundary' && feature.geometry?.type === 'Polygon')
+    if (boundary) {
+      const ring = (boundary.geometry.coordinates as number[][][])[0]
+      const lats = ring.map((coord) => coord[1])
+      const lngs = ring.map((coord) => coord[0])
+      return [
+        (Math.min(...lats) + Math.max(...lats)) / 2,
+        (Math.min(...lngs) + Math.max(...lngs)) / 2,
+      ]
+    }
+    return SITE_CENTER
   }
 
-  const boundary = features.find((feature) => feature.properties.zone === 'site_boundary' && feature.geometry.type === 'Polygon')
-  if (boundary) {
-    const ring = (boundary.geometry.coordinates as number[][][])[0]
-    const lats = ring.map((coord) => coord[1])
-    const lngs = ring.map((coord) => coord[0])
-    return [
-      (Math.min(...lats) + Math.max(...lats)) / 2,
-      (Math.min(...lngs) + Math.max(...lngs)) / 2,
-    ]
-  }
-
-  return SITE_CENTER
+  const lat = cornerPoints.reduce((sum, point) => sum + point[1], 0) / cornerPoints.length
+  const lng = cornerPoints.reduce((sum, point) => sum + point[0], 0) / cornerPoints.length
+  return [lat, lng]
 }
 
 export function GeoAIMap({
@@ -148,20 +144,35 @@ export function GeoAIMap({
   showHeatmap,
   showWorkers,
   heatmapOpacity = 0.65,
-  viewMode
+  viewMode,
+  dynamicZones = [],
 }: GeoAIMapProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<any>(null)
   const tacticalTileRef = useRef<any>(null)
   const satelliteTileRef = useRef<any>(null)
   const heatLayerRef = useRef<any>(null)
-  const zonesLayerRef = useRef<any>(null)
-  const labelsLayerRef = useRef<any>(null)
-  const fovLayerRef = useRef<any>(null)
-  const workersLayerRef = useRef<any>(null)
+  const zonesLayerRef = useRef<L.LayerGroup | null>(null)
+  const labelsLayerRef = useRef<L.LayerGroup | null>(null)
+  const fovLayerRef = useRef<L.LayerGroup | null>(null)
+  const workersLayerRef = useRef<L.LayerGroup | null>(null)
+  const dynamicZonesLayerRef = useRef<L.LayerGroup | null>(null)
+  const samLayerRef = useRef<L.LayerGroup | null>(null)
+  const vlmLayerRef = useRef<L.LayerGroup | null>(null)
+  
+  const [analysisHistory, setAnalysisHistory] = useState<any[]>([])
+  const [hoverCoords, setHoverCoords] = useState<[number, number] | null>(null)
+  const [showHistory, setShowHistory] = useState(false)
+  const [isQuerying, setIsQuerying] = useState(false)
   const [leafletReady, setLeafletReady] = useState(false)
+  const [mapReady, setMapReady] = useState(false)
   const [geoData, setGeoData] = useState<ZoneCollection | null>(null)
+  const lastValidZonesRef = useRef<ZoneCollection | null>(null)
   const [fetchError, setFetchError] = useState<string | null>(null)
+  const [samSegments, setSamSegments] = useState<any[]>([])
+  const [isAnalyzing, setIsAnalyzing] = useState(false)
+  const [mapMode, setMapMode] = useState<'segment' | 'expert'>('segment')
+  const [vlmAnalyses, setVlmAnalyses] = useState<any[]>([])
 
   const TACTICAL_URL = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
   const SATELLITE_URL = 'https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}'
@@ -210,19 +221,45 @@ export function GeoAIMap({
   }, [])
 
   useEffect(() => {
-    fetch('/buildsight_zones_complete.geojson')
-      .then(r => {
-        if (!r.ok) throw new Error('GeoJSON fetch failed')
-        return r.json()
-      })
-      .then((d: ZoneCollection) => {
-        setGeoData(d)
+    const loadGeoZones = async () => {
+      try {
+        // Step 1: Try static public GeoJSON
+        const response = await fetch('/buildsight_zones_complete.geojson')
+        if (!response.ok) throw new Error('Static GeoJSON fetch failed')
+        const data = await response.json()
+        
+        console.log('GeoAI: Successfully loaded zones from static GeoJSON')
+        setGeoData(data)
+        lastValidZonesRef.current = data
         setFetchError(null)
-      })
-      .catch((err) => {
-        console.warn('GeoAI: Could not load buildsight_zones_complete.geojson', err)
-        setFetchError('Failed to parse hazard zones')
-      })
+      } catch (err) {
+        console.warn('GeoAI: Static GeoJSON failed, falling back to API', err)
+
+        try {
+          // Step 2: Fallback to Backend API
+          const apiResponse = await fetch('http://localhost:8000/api/geoai/zones')
+          if (!apiResponse.ok) throw new Error('Backend API fetch failed')
+          const apiData = await apiResponse.json()
+          
+          console.log('GeoAI: Successfully loaded zones from Backend API')
+          setGeoData(apiData)
+          lastValidZonesRef.current = apiData
+          setFetchError(null)
+        } catch (apiErr) {
+          console.error('GeoAI: Failed to load zones from all sources', apiErr)
+          
+          // Final fallback: Use last valid or Site Center default
+          if (lastValidZonesRef.current) {
+            console.log('GeoAI: Reusing last valid zone data from memory')
+            setGeoData(lastValidZonesRef.current)
+          } else {
+            setFetchError('Critical: Zoning data unavailable')
+          }
+        }
+      }
+    }
+
+    loadGeoZones()
   }, [])
 
   useEffect(() => {
@@ -240,12 +277,14 @@ export function GeoAIMap({
     satelliteTileRef.current = L.tileLayer(SATELLITE_URL, {
       maxZoom: 22,
       subdomains: 'abcd',
+      className: 'geoai-satellite-tile',
       opacity: isSat ? 1 : 0
     }).addTo(map)
 
     tacticalTileRef.current = L.tileLayer(TACTICAL_URL, {
       maxZoom: 22,
       subdomains: 'abcd',
+      className: 'geoai-tactical-tile',
       opacity: isSat ? 0 : 1
     }).addTo(map)
 
@@ -275,18 +314,110 @@ export function GeoAIMap({
       heatLayerRef.current = heatLayer as unknown as typeof heatLayerRef.current
     }
 
+    // Initialize layer groups once
     zonesLayerRef.current = L.layerGroup().addTo(map)
     labelsLayerRef.current = L.layerGroup().addTo(map)
     fovLayerRef.current = L.layerGroup().addTo(map)
     workersLayerRef.current = L.layerGroup().addTo(map)
+    dynamicZonesLayerRef.current = L.layerGroup().addTo(map)
+    samLayerRef.current = L.layerGroup().addTo(map)
+    vlmLayerRef.current = L.layerGroup().addTo(map)
+
+    map.on('mousemove', (e: any) => {
+      setHoverCoords([e.latlng.lat, e.latlng.lng])
+    })
+
+    map.on('mouseout', () => {
+      setHoverCoords(null)
+    })
 
     mapRef.current = map
+    setMapReady(true)
 
     return () => {
       map.remove()
       mapRef.current = null
+      setMapReady(false)
     }
-  }, [leafletReady])
+  }, [leafletReady]) // Singleton map init
+
+  // Dynamic Event Handling for Map Clicks
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map) return
+
+    const handleMapClick = async (e: any) => {
+      const realWorldGps = denormalizeLatLng(
+        [e.latlng.lat, e.latlng.lng],
+        overlayCenter,
+        overlayRotationDelta,
+        OVERLAY_SCALE,
+        OVERLAY_OFFSET_METERS
+      )
+
+      if (mapMode === 'segment') {
+        if (isAnalyzing) return
+        const swLat = 10.81658333, swLon = 78.66873333
+        const mLat = 111132.92
+        const mLon = 111412.84 * Math.cos((swLat * Math.PI) / 180)
+        const ry = (realWorldGps[0] - swLat) * mLat
+        const rx = (realWorldGps[1] - swLon) * mLon
+        const angleRad = (-85.0 * Math.PI) / 180
+        const wx = rx * Math.cos(angleRad) - ry * Math.sin(angleRad)
+        const wy = rx * Math.sin(angleRad) + ry * Math.cos(angleRad)
+        const px = (wx / 18.90) * 1920
+        const py = (1.0 - wy / 9.75) * 1080
+
+        setIsAnalyzing(true)
+        try {
+          const res = await fetch('/api/geoai/sam/prompt', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ prompts: [[px, py]], min_score: 0.65 }),
+          })
+          if (res.ok) {
+            const segments = await res.json()
+            setSamSegments(prev => [...prev, ...segments])
+          }
+        } catch (err) {
+          console.error('SAM Prompt failed:', err)
+        } finally {
+          setIsAnalyzing(false)
+        }
+      } else {
+        setIsQuerying(true)
+        try {
+          const res = await fetch('/api/geoai/vlm/spatial-query', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+              lat: realWorldGps[0], 
+              lon: realWorldGps[1],
+              question: "Assess site activity at this exact coordinate. Identify any missing PPE or safety risks."
+            }),
+          })
+          if (res.ok) {
+            const analysis = await res.json()
+            setAnalysisHistory(prev => [{
+              timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+              coords: realWorldGps,
+              result: analysis.description
+            }, ...prev])
+            setShowHistory(true)
+          }
+        } catch (err) {
+          console.error('Spatial VLM Query failed:', err)
+        } finally {
+          setIsQuerying(false)
+        }
+      }
+    }
+
+    map.on('click', handleMapClick)
+    return () => {
+      map.off('click', handleMapClick)
+    }
+  }, [mapMode, isAnalyzing, overlayCenter, overlayRotationDelta])
 
   useEffect(() => {
     if (!mapRef.current || !tacticalTileRef.current || !satelliteTileRef.current) return
@@ -312,176 +443,224 @@ export function GeoAIMap({
     }, 20)
   }, [viewMode])
 
+  // Unified Rendering Effect for Zones and Labels
   useEffect(() => {
-    if (!mapRef.current || !geoData || !zonesLayerRef.current || !labelsLayerRef.current || !fovLayerRef.current) return
+    console.log('[ZONE_RENDER] Guard check:', {
+      mapReady,
+      hasMap: !!mapRef.current,
+      hasGeoData: !!geoData,
+      featureCount: geoData?.features?.length,
+      hasZonesLayer: !!zonesLayerRef.current,
+      hasLabelsLayer: !!labelsLayerRef.current,
+      hasFovLayer: !!fovLayerRef.current,
+      showZones,
+      showLabels,
+      showCameraFOV
+    })
+    if (!mapRef.current || !geoData || !zonesLayerRef.current || !labelsLayerRef.current || !fovLayerRef.current) {
+      console.warn('[ZONE_RENDER] EARLY EXIT — missing deps')
+      return
+    }
 
-    let renderTimeout = setTimeout(() => {
-      zonesLayerRef.current.clearLayers()
-      labelsLayerRef.current.clearLayers()
-      fovLayerRef.current.clearLayers()
+    // Always clear existing layers first to avoid stale artifacts
+    zonesLayerRef.current.clearLayers()
+    labelsLayerRef.current.clearLayers()
+    fovLayerRef.current.clearLayers()
 
-      geoData.features.forEach((feature: ZoneFeature) => {
-        const props = feature.properties
-        const geom = feature.geometry
+    if (!showZones && !showLabels && !showCameraFOV) return
 
-        if (geom.type === 'Point') {
-          // Render camera markers
-          if (props.type === 'camera') {
-            const coord = offsetLatLng(
-              normalizeLngLat(geom.coordinates as LngLatTuple),
-              CAMERA_OFFSET_METERS
-            )
-            const camIcon = L.divIcon({
-              className: 'geoai-camera-marker',
-              html: `<div style="
-                background: rgba(0, 180, 216, 0.9);
-                border: 2px solid #fff;
-                border-radius: 50%;
-                width: 22px; height: 22px;
-                display: flex; align-items: center; justify-content: center;
-                font-size: 12px; box-shadow: 0 0 12px rgba(0,229,255,0.6);
-              ">📷</div>`,
-              iconSize: [22, 22],
-              iconAnchor: [11, 11],
-            })
-            const camMarker = L.marker(coord, { icon: camIcon })
-            camMarker.bindPopup(`
-              <div class="geoai-popup">
-                <strong>${props.camera_id ?? 'CAM'}</strong><br/>
-                Height: ${props.height_ft ?? '?'}ft<br/>
-                Direction: ${props.direction ?? '?'}<br/>
-                Placement: Neighbour building (North)
-              </div>
-            `, { className: 'geoai-popup-container' })
-            fovLayerRef.current!.addLayer(camMarker)
-          }
-          return
-        }
+    const baseZoneFillOpacity = mapMode === 'expert' ? 0.60 : 0.90
+    const labelOpacity = 1.0
 
-        const risk = (props.risk || 'none').toUpperCase()
-        const isFOV = props.type === 'camera_coverage' || props.zone?.includes('camera_fov')
-        const isBoundary = props.zone === 'site_boundary'
+    console.log('[ZONE_RENDER] Rendering', geoData.features.length, 'features')
 
-        if (isFOV) {
-          const baseCoords = (geom.coordinates as number[][][])[0].map(
-            (c: number[]) => normalizeLngLat(c as LngLatTuple)
+    geoData.features.forEach((feature: ZoneFeature) => {
+      const props = feature.properties
+      const geom = feature.geometry
+      if (!geom) return
+
+      if (geom.type === 'Point') {
+        if (props.type === 'camera' && showCameraFOV) {
+          const coord = offsetLatLng(
+            normalizeLngLat(geom.coordinates as LngLatTuple),
+            CAMERA_OFFSET_METERS
           )
-          const apex = offsetLatLng(baseCoords[0], CAMERA_OFFSET_METERS)
-          const coords = baseCoords.map((coord, index, allCoords) => {
-            if (index === 0 || index === allCoords.length - 1) return apex
-            return scaleFromAnchor(
-              offsetLatLng(coord, CAMERA_OFFSET_METERS),
-              apex,
-              CAMERA_FOV_SCALE
-            )
+          const camIcon = L.divIcon({
+            className: 'geoai-camera-marker',
+            html: `<div style="
+              background: rgba(0, 180, 216, 0.9);
+              border: 2px solid #fff;
+              border-radius: 50%;
+              width: 22px; height: 22px;
+              display: flex; align-items: center; justify-content: center;
+              font-size: 12px; box-shadow: 0 0 12px rgba(0,229,255,0.6);
+            ">📷</div>`,
+            iconSize: [22, 22],
+            iconAnchor: [11, 11],
           })
-          const fovPoly = L.polygon(coords, {
-            color: '#00e5ff',
-            weight: 1,
-            dashArray: '6 4',
-            fillColor: '#00e5ff',
-            fillOpacity: 0.08,
-          })
-          fovLayerRef.current!.addLayer(fovPoly)
-          return
+          const camMarker = L.marker(coord, { icon: camIcon, zIndexOffset: 500 })
+          camMarker.bindPopup(`
+            <div class="geoai-popup">
+              <strong>${props.camera_id ?? 'CAM'}</strong><br/>
+              Height: ${props.height_ft ?? '?'}ft<br/>
+              Direction: ${props.direction ?? '?'}<br/>
+              Placement: Neighbour building (North)
+            </div>
+          `, { className: 'geoai-popup-container' })
+          fovLayerRef.current?.addLayer(camMarker)
         }
+        return
+      }
 
-        if (isBoundary) {
-          const coords = (geom.coordinates as number[][][])[0].map(
-            (c: number[]) => normalizeLngLat(c as LngLatTuple)
+      const risk = (props.risk || 'none').toUpperCase()
+      const isFOV = props.type === 'camera_coverage' || props.zone?.includes('camera_fov')
+      const isBoundary = props.zone === 'site_boundary'
+
+      if (isFOV && showCameraFOV) {
+        const baseCoords = (geom.coordinates as number[][][])[0].map(
+          (c: number[]) => normalizeLngLat(c as LngLatTuple)
+        )
+        const apex = offsetLatLng(baseCoords[0], CAMERA_OFFSET_METERS)
+        const coords = baseCoords.map((coord, index, allCoords) => {
+          if (index === 0 || index === allCoords.length - 1) return apex
+          return scaleLatLng(
+            offsetLatLng(coord, CAMERA_OFFSET_METERS),
+            apex,
+            CAMERA_FOV_SCALE
           )
-          const boundaryPoly = L.polygon(coords, {
-            color: '#c0cdd9',
-            weight: 2,
-            dashArray: '8 6',
-            fill: false,
-          })
-          zonesLayerRef.current!.addLayer(boundaryPoly)
-          return
-        }
+        })
+        const fovPoly = L.polygon(coords, {
+          color: '#00e5ff',
+          weight: 1,
+          dashArray: '6 4',
+          fillColor: '#00e5ff',
+          fillOpacity: 0.12,
+          className: 'geoai-fov-layer transition-all duration-300'
+        })
+        fovLayerRef.current?.addLayer(fovPoly)
+        return
+      }
 
+      if (isBoundary && showZones) {
+        const coords = (geom.coordinates as number[][][])[0].map(
+          (c: number[]) => normalizeLngLat(c as LngLatTuple)
+        )
+        const boundaryPoly = L.polygon(coords, {
+          color: '#c0cdd9',
+          weight: 2,
+          dashArray: '8 6',
+          fill: false,
+          className: 'geoai-boundary-layer'
+        })
+        zonesLayerRef.current?.addLayer(boundaryPoly)
+        return
+      }
+
+      if (showZones) {
         const zoneColor = RISK_COLORS[risk] || RISK_COLORS.none
-        const fillOpacity = RISK_FILL_OPACITY[risk] || 0.1
+        const dynamicFillOpacity = (RISK_FILL_OPACITY[risk] || 0.1) * (baseZoneFillOpacity / 0.4)
 
         if (geom.type === 'Polygon') {
           const rings = (geom.coordinates as number[][][]).map(ring =>
             ring.map((c: number[]) => normalizeLngLat(c as LngLatTuple))
           )
+          // Log the first zone's transformed coordinates
+          if (props.zone === 'site_boundary' || props.zone === 'high_risk_scaffolding') {
+            const rawFirst = (geom.coordinates as number[][][])[0][0]
+            const normalized = rings[0][0]
+            console.log(`[ZONE_COORDS] ${props.zone}: raw=[${rawFirst}] → normalized=[${normalized}] overlayCenter=[${overlayCenter}] rotDelta=${overlayRotationDelta}`)
+          }
           const zonePoly = L.polygon(rings, {
             color: zoneColor,
             weight: 1.5,
             fillColor: zoneColor,
-            fillOpacity,
+            fillOpacity: dynamicFillOpacity,
+            className: 'geoai-zone-path transition-all duration-300'
           })
-          zonesLayerRef.current!.addLayer(zonePoly)
+          zonesLayerRef.current?.addLayer(zonePoly)
 
-          const bounds = zonePoly.getBounds()
-          const center = bounds.getCenter()
-          const labelPosition = offsetLatLng(
-            [center.lat, center.lng],
-            LABEL_OFFSET_METERS[props.zone ?? ''] ?? [0, 0]
-          )
-          const labelText = (props.zone || '').replace(/_/g, ' ').toUpperCase()
-          const label = L.marker(labelPosition, {
-            icon: L.divIcon({
-              className: 'geoai-zone-label',
-              html: `<span style="color:${zoneColor}; text-shadow: 0 0 10px rgba(0,0,0,0.8)">${labelText}</span>`,
-              iconSize: [120, 16],
-              iconAnchor: [60, 8],
-            }),
-          })
-          labelsLayerRef.current!.addLayer(label)
+          if (showLabels) {
+            const bounds = zonePoly.getBounds()
+            const center = bounds.getCenter()
+            const labelPosition = offsetLatLng(
+              [center.lat, center.lng],
+              LABEL_OFFSET_METERS[props.zone ?? ''] ?? [0, 0]
+            )
+            const labelText = (props.zone || '').replace(/_/g, ' ').toUpperCase()
+            const labelMarker = L.marker(labelPosition, {
+              icon: L.divIcon({
+                className: 'geoai-zone-label',
+                html: `
+                  <div class="geoai-label-wrapper transition-opacity duration-300" style="opacity: ${labelOpacity}">
+                    <span style="color:${zoneColor}; text-shadow: 0 0 10px rgba(0,0,0,0.8); font-weight: 800; letter-spacing: 0.05em;">${labelText}</span>
+                  </div>
+                `,
+                iconSize: [120, 16],
+                iconAnchor: [60, 8],
+              }),
+              zIndexOffset: 1000
+            })
+            labelsLayerRef.current?.addLayer(labelMarker)
+          }
         }
-      })
-    }, 150) // Debounce
+      }
+    })
+  }, [geoData, normalizeLngLat, mapMode, showZones, showLabels, showCameraFOV, mapReady])
 
-    return () => clearTimeout(renderTimeout)
-  }, [geoData, normalizeLngLat])
-
-  useEffect(() => {
-    if (!mapRef.current || !zonesLayerRef.current) return
-    if (showZones) {
-      mapRef.current.addLayer(zonesLayerRef.current)
-    } else {
-      mapRef.current.removeLayer(zonesLayerRef.current)
-    }
-  }, [showZones])
+  // Remove old granular visibility effects as they are now handled by the unified rendering effect
 
   useEffect(() => {
-    if (!mapRef.current || !labelsLayerRef.current) return
-    if (showLabels) {
-      mapRef.current.addLayer(labelsLayerRef.current)
-    } else {
-      mapRef.current.removeLayer(labelsLayerRef.current)
-    }
-  }, [showLabels])
-
-  useEffect(() => {
-    if (!mapRef.current || !fovLayerRef.current) return
-    if (showCameraFOV) {
-      mapRef.current.addLayer(fovLayerRef.current)
-    } else {
-      mapRef.current.removeLayer(fovLayerRef.current)
-    }
-  }, [showCameraFOV])
-
-  useEffect(() => {
-    if (!heatLayerRef.current || !data?.cells) return
+    if (!heatLayerRef.current || !data) return
     if (!showHeatmap) {
       heatLayerRef.current.setData({ min: 0, max: 1, data: [] })
       return
     }
-    const hmData = {
-      min: 0,
-      max: 1,
-      data: data.cells
-        .filter(c => c.risk_score > 0.05)
-        .map(c => {
-          const [lat, lng] = normalizeLatLng([c.lat, c.lon])
-          return { lat, lng, value: c.risk_score }
-        }),
+
+    if (data.heatmap) {
+      const { cols, rows, resolution_m, data: gridData } = data.heatmap
+      const hmData = []
+      
+      const angleRad = (85.0 * Math.PI) / 180
+      const cosA = Math.cos(angleRad)
+      const sinA = Math.sin(angleRad)
+      
+      const siteSwLat = 10.81658333
+      const siteSwLon = 78.66873333
+      const mLat = 110574.0
+      const mLon = 111319.0 * Math.cos((siteSwLat * Math.PI) / 180)
+      
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          const value = gridData[r * cols + c]
+          if (value > 0.05) {
+            const wx = c * resolution_m + resolution_m / 2
+            const wy = r * resolution_m + resolution_m / 2
+            
+            const rx = wx * cosA - wy * sinA
+            const ry = wx * sinA + wy * cosA
+            
+            const lat = siteSwLat + ry / mLat
+            const lon = siteSwLon + rx / mLon
+            
+            const [nLat, nLng] = normalizeLatLng([lat, lon])
+            hmData.push({ lat: nLat, lng: nLng, value })
+          }
+        }
+      }
+      heatLayerRef.current.setData({ min: 0, max: 1, data: hmData })
+    } else if (data.cells) {
+      const hmData = {
+        min: 0,
+        max: 1,
+        data: data.cells
+          .filter(c => c.risk_score > 0.05)
+          .map(c => {
+            const [lat, lng] = normalizeLatLng([c.lat, c.lon])
+            return { lat, lng, value: c.risk_score }
+          }),
+      }
+      heatLayerRef.current.setData(hmData)
     }
-    heatLayerRef.current.setData(hmData)
   }, [data, showHeatmap, normalizeLatLng])
 
   useEffect(() => {
@@ -534,22 +713,277 @@ export function GeoAIMap({
     })
   }, [data, showWorkers, normalizeLatLng])
 
+  // ── Dynamic zones layer ────────────────────────────────────────────────
+  useEffect(() => {
+    if (!mapRef.current || !dynamicZonesLayerRef.current) return
+    dynamicZonesLayerRef.current.clearLayers()
+
+    dynamicZones.filter(z => z.is_active).forEach(zone => {
+      // Apply the same normalization pipeline as static zones so dynamic zones
+      // align with the rotated/scaled building overlay on the map.
+      const ring = zone.coordinates.map(([lng, lat]) => normalizeLngLat([lng, lat]))
+      if (ring.length < 3) return
+
+      const poly = L.polygon(ring, {
+        color: zone.color,
+        weight: 2,
+        dashArray: '6 4',
+        fillColor: zone.color,
+        fillOpacity: 0.15,
+      })
+
+      poly.bindPopup(`
+        <div class="geoai-popup">
+          <strong>${zone.name}</strong><br/>
+          Type: ${zone.zone_type}<br/>
+          Risk: <span style="color:${zone.color}">${zone.risk_level.toUpperCase()}</span><br/>
+          ${zone.description ? `<em>${zone.description}</em>` : ''}
+        </div>
+      `, { className: 'geoai-popup-container' })
+
+      dynamicZonesLayerRef.current!.addLayer(poly)
+
+      // Label
+      const bounds = poly.getBounds()
+      const centre = bounds.getCenter()
+      const label = L.marker([centre.lat, centre.lng], {
+        icon: L.divIcon({
+          className: 'geoai-zone-label',
+          html: `<span style="color:${zone.color}; text-shadow:0 0 10px rgba(0,0,0,0.8)">${zone.name.toUpperCase()}</span>`,
+          iconSize: [120, 16],
+          iconAnchor: [60, 8],
+        }),
+      })
+      dynamicZonesLayerRef.current!.addLayer(label)
+    })
+  }, [dynamicZones, normalizeLngLat])
+
+  // ── SAM Segments layer ──────────────────────────────────────────────────
+  useEffect(() => {
+    if (!mapRef.current || !samLayerRef.current) return
+    samLayerRef.current.clearLayers()
+
+    samSegments.forEach(seg => {
+      const feature = seg.geojson
+      const coords = feature.geometry.coordinates[0].map((c: any) => normalizeLngLat(c as LngLatTuple))
+      
+      const poly = L.polygon(coords, {
+        color: '#00e5ff',
+        weight: 2,
+        fillColor: '#00e5ff',
+        fillOpacity: 0.3,
+        className: 'geoai-sam-segment'
+      })
+
+      poly.bindPopup(`
+        <div class="geoai-popup">
+          <strong style="color:#00e5ff">GeoAI Segment</strong><br/>
+          Area: ${seg.area_m2.toFixed(1)} m²<br/>
+          Confidence: ${(seg.confidence * 100).toFixed(1)}%<br/>
+          Device: ${seg.device}
+        </div>
+      `, { className: 'geoai-popup-container' })
+
+      samLayerRef.current.addLayer(poly)
+    })
+  }, [samSegments, normalizeLngLat])
+
   return (
-    <div className="geoai-map-wrapper" style={{ height: '100%' }}>
-      <div ref={containerRef} className="geoai-map-container" style={{ height: '100%' }} />
+    <div className="geoai-shell" style={{ height: '100%' }}>
+      {/* Precision Coordinate HUD */}
+      <div className="geoai-hud-card geoai-glass geoai-hud-layer">
+        <div className="geoai-hud-header">
+          <div className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" style={{ boxShadow: 'var(--geoai-glow)' }} />
+          <span className="geoai-hud-label geoai-glow-text">Spatial Logic Active</span>
+        </div>
+        
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '24px' }}>
+          <div className="geoai-hud-metric">
+            <span className="geoai-hud-label">Projection</span>
+            <span className="geoai-hud-value">UTM ZONE 44N</span>
+          </div>
+          <div className="geoai-hud-metric" style={{ textAlign: 'right' }}>
+            <span className="geoai-hud-label">Precision</span>
+            <span className="geoai-hud-value" style={{ color: 'var(--color-accent)' }}>±0.008m</span>
+          </div>
+        </div>
+        
+        <div style={{ height: '1px', width: '100%', background: 'rgba(255,255,255,0.05)', margin: '4px 0' }} />
+        
+        <div className="geoai-hud-metric">
+          <span className="geoai-hud-label">GPS Cursor</span>
+          <span className="geoai-hud-value">
+            {hoverCoords ? (
+              <>
+                {hoverCoords[0].toFixed(6)}°N / {hoverCoords[1].toFixed(6)}°E
+              </>
+            ) : '--.------°N / --.------°E'}
+          </span>
+        </div>
+      </div>
 
-      {fetchError && (
-        <div className="geoai-toast" style={{ position: 'absolute', top: 20, right: 20, zIndex: 1000 }}>
-          <span>{fetchError}</span>
+      {/* Mode Controls - Premium Toggle */}
+      <div className="geoai-toolbar geoai-glass geoai-hud-layer">
+        <button
+          onClick={() => setMapMode('segment')}
+          className={`geoai-action-button ${mapMode === 'segment' ? 'geoai-action-button--active' : ''}`}
+        >
+          <svg className="geoai-tool-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z" />
+          </svg>
+          <span>Segmentation</span>
+        </button>
+        
+        <button
+          onClick={() => setMapMode('expert')}
+          className={`geoai-action-button geoai-action-button--purple ${mapMode === 'expert' ? 'geoai-action-button--active' : ''}`}
+        >
+          <svg className="geoai-tool-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+          </svg>
+          <span>Spatial Expert</span>
+        </button>
+      </div>
+
+      {/* Intelligence Insights Sidebar */}
+      <div className={`geoai-sidebar geoai-glass geoai-sidebar-layer ${showHistory ? '' : 'geoai-sidebar--hidden'}`}>
+        <div className="geoai-sidebar-header">
+          <div>
+            <h3 style={{ fontSize: 'var(--fs-md)', fontWeight: 900, textTransform: 'uppercase', color: '#fff', letterSpacing: '-0.02em' }}>Insights</h3>
+            <span className="geoai-hud-label" style={{ letterSpacing: '0.3em' }}>Spatial VLM Stream</span>
+          </div>
+          <button onClick={() => setShowHistory(false)} style={{ width: '32px', height: '32px', borderRadius: '50%', background: 'rgba(255,255,255,0.05)', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.4)' }}>
+            <svg className="geoai-tool-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" /></svg>
+          </button>
+        </div>
+        
+        <div className="geoai-sidebar-content custom-scrollbar">
+          {analysisHistory.length === 0 ? (
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', opacity: 0.2, textAlign: 'center', padding: '40px' }}>
+              <div style={{ width: '64px', height: '64px', border: '2px dashed rgba(255,255,255,0.2)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '16px' }}>
+                <svg className="geoai-tool-icon" style={{ width: '32px', height: '32px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" strokeWidth={1.5} /></svg>
+              </div>
+              <p className="geoai-hud-label">Awaiting spatial probe data...</p>
+            </div>
+          ) : (
+            analysisHistory.map((entry, idx) => (
+              <div key={idx} className="geoai-insight-card">
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <div className="w-1.5 h-1.5 rounded-full bg-purple-500" style={{ boxShadow: '0 0 10px rgba(168,85,247,0.8)' }} />
+                    <span style={{ fontSize: '11px', fontWeight: 900, color: '#a855f7', fontFamily: 'var(--font-mono)' }}>{entry.timestamp}</span>
+                  </div>
+                </div>
+                <p style={{ fontSize: '14px', color: 'rgba(255,255,255,0.8)', lineHeight: '1.6', marginBottom: '16px' }}>{entry.result}</p>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span style={{ padding: '4px 8px', background: 'rgba(168,85,247,0.2)', color: '#a855f7', fontSize: '9px', fontWeight: 900, borderRadius: '6px', textTransform: 'uppercase', letterSpacing: '0.1em' }}>VLM Core</span>
+                  <span style={{ fontSize: '10px', color: 'rgba(255,255,255,0.2)', fontFamily: 'var(--font-mono)' }}>{entry.coords[0].toFixed(5)}, {entry.coords[1].toFixed(5)}</span>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+        
+        <div style={{ padding: '24px', borderTop: '1px solid var(--geoai-border)', background: 'rgba(255,255,255,0.02)' }}>
+           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', fontWeight: 700, color: 'rgba(255,255,255,0.2)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+             <span>Total Scans: {analysisHistory.length}</span>
+             <span style={{ color: 'var(--color-accent)', opacity: 0.5 }}>V1.2.4-PRO</span>
+           </div>
+        </div>
+      </div>
+
+      {/* History Slide Toggle */}
+      {!showHistory && analysisHistory.length > 0 && (
+        <button 
+          onClick={() => setShowHistory(true)}
+          className="geoai-glass geoai-sidebar-layer"
+          style={{ 
+            position: 'absolute', 
+            right: 0, 
+            top: '50%', 
+            transform: 'translateY(-50%)', 
+            width: '48px', 
+            height: '180px', 
+            borderRadius: '24px 0 0 24px', 
+            borderRight: 'none',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '16px',
+            color: 'rgba(255,255,255,0.4)',
+            cursor: 'pointer'
+          }}
+        >
+          <span className="vertical-text" style={{ fontSize: '10px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.4em' }}>Audit Log</span>
+          <svg className="geoai-tool-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M15 19l-7-7 7-7" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" /></svg>
+        </button>
+      )}
+
+      {/* Analysis Pulse Matrix Overlay */}
+      {(isAnalyzing || isQuerying) && (
+        <div className="geoai-matrix-overlay">
+          <div className="geoai-matrix-spinner">
+            <div style={{ position: 'absolute', inset: 0, border: '4px solid rgba(0, 229, 255, 0.1)', borderRadius: '50%', animation: 'ping 2s infinite' }} />
+            <div style={{ position: 'absolute', inset: 0, border: '4px solid rgba(168, 85, 247, 0.1)', borderRadius: '50%', animation: 'ping 3s infinite' }} />
+            <div style={{ position: 'absolute', inset: 0, border: '6px solid var(--geoai-border)', borderTopColor: 'var(--color-accent)', borderBottomColor: '#a855f7', borderRadius: '50%', animation: 'spin 4s linear infinite', boxShadow: '0 0 50px rgba(0, 229, 255, 0.2)' }} />
+          </div>
+          
+          <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <h2 className="geoai-glow-text" style={{ fontSize: '24px', fontWeight: 900, textTransform: 'uppercase', color: '#fff' }}>
+              {isQuerying ? 'Consulting Expert VLM' : 'Generating Mesh'}
+            </h2>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', justifyContent: 'center' }}>
+               <div style={{ height: '2px', width: '40px', background: 'linear-gradient(to right, transparent, var(--color-accent))' }} />
+               <span className="geoai-hud-label" style={{ opacity: 0.6 }}>Spatial Intelligence Active</span>
+               <div style={{ height: '2px', width: '40px', background: 'linear-gradient(to left, transparent, #a855f7)' }} />
+            </div>
+          </div>
         </div>
       )}
 
-      {!leafletReady && (
-        <div className="geoai-map-loading">
-          <div className="geoai-map-loading__spinner" />
-          <span>Initializing Spatial Engine…</span>
-        </div>
-      )}
+      <div ref={containerRef} className="geoai-map-container" />
+
+      <style>{`
+        .vertical-text {
+          writing-mode: vertical-rl;
+          text-orientation: mixed;
+        }
+        .custom-scrollbar::-webkit-scrollbar {
+          width: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+          background: rgba(255, 255, 255, 0.05);
+          border-radius: 20px;
+          border: 2px solid transparent;
+          background-clip: content-box;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+          background: rgba(255, 255, 255, 0.1);
+        }
+        .geoai-tactical-tile {
+          filter: grayscale(1) invert(1) opacity(0.2) brightness(1.2) contrast(1.2);
+        }
+        .geoai-map-container .leaflet-container {
+          background: #05070a !important;
+        }
+        .geoai-zone-path {
+          transition: fill-opacity 300ms ease-in-out, stroke-opacity 300ms ease-in-out;
+        }
+        .geoai-label-wrapper {
+          transition: opacity 300ms ease-in-out, transform 300ms ease-in-out;
+        }
+        .geoai-fov-layer {
+          transition: opacity 300ms ease-in-out;
+        }
+        @keyframes scan {
+          from { transform: translateY(-100%); }
+          to { transform: translateY(100%); }
+        }
+      `}</style>
     </div>
   )
 }

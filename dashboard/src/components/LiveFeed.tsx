@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useDetectionStats } from '../DetectionStatsContext'
 
 const detections = [
@@ -18,24 +18,79 @@ export function LiveFeed({ confidenceThreshold }: LiveFeedProps) {
   const { pushDetections, setRunning, setModelName } = useDetectionStats()
   const visible = detections.filter((d) => d.conf >= confidenceThreshold)
 
+  const [showHeatmap, setShowHeatmap] = useState(false)
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const heatmapHistory = useRef<{ x: number, y: number, time: number, tone: string }[]>([])
+
   useEffect(() => {
     setRunning(true)
     setModelName('BS-ENSEMBLE-WBF')
     
-    // Simulate a recurring "inference" from the live stream
     const interval = setInterval(() => {
       const mapped = visible.map(d => ({
         class: d.label.includes('HARDHAT') ? 'helmet' : d.label.includes('VEST') ? 'vest' : 'worker',
         confidence: d.conf
       }))
-      pushDetections(mapped, 12) // low latency for "live"
+      pushDetections(mapped, 12)
+
+      // Add to heatmap history
+      const now = performance.now()
+      visible.forEach(d => {
+        // Parse percentages like "20%" to [0, 1]
+        const x = parseFloat(d.left) / 100
+        const y = parseFloat(d.top) / 100
+        heatmapHistory.current.push({ x, y, time: now, tone: d.tone })
+      })
     }, 1000)
+
+    // Drawing Loop
+    let raf: number
+    const draw = () => {
+      const canvas = canvasRef.current
+      if (canvas) {
+        const ctx = canvas.getContext('2d')
+        if (ctx) {
+          const w = canvas.clientWidth
+          const h = canvas.clientHeight
+          if (canvas.width !== w) canvas.width = w
+          if (canvas.height !== h) canvas.height = h
+          
+          ctx.clearRect(0, 0, w, h)
+          
+          if (showHeatmap) {
+            const now = performance.now()
+            // Clean up old points (> 1.5s)
+            heatmapHistory.current = heatmapHistory.current.filter(p => now - p.time < 1500)
+            
+            heatmapHistory.current.forEach(p => {
+              const hx = p.x * w
+              const hy = p.y * h
+              const age = (now - p.time) / 1500
+              const opacity = Math.max(0, (1 - age) * 0.05)
+              
+              const grad = ctx.createRadialGradient(hx, hy, 0, hx, hy, 20)
+              const color = p.tone === 'critical' ? '255, 42, 42' : '0, 255, 136'
+              grad.addColorStop(0, `rgba(${color}, ${opacity})`)
+              grad.addColorStop(1, `rgba(${color}, 0)`)
+              
+              ctx.fillStyle = grad
+              ctx.beginPath()
+              ctx.arc(hx, hy, 20, 0, Math.PI * 2)
+              ctx.fill()
+            })
+          }
+        }
+      }
+      raf = requestAnimationFrame(draw)
+    }
+    raf = requestAnimationFrame(draw)
 
     return () => {
       clearInterval(interval)
+      cancelAnimationFrame(raf)
       setRunning(false)
     }
-  }, [visible, pushDetections, setRunning, setModelName])
+  }, [confidenceThreshold, pushDetections, setRunning, setModelName, showHeatmap])
 
   return (
     <div className="live-feed">
@@ -68,6 +123,21 @@ export function LiveFeed({ confidenceThreshold }: LiveFeedProps) {
         <div className="crosshair crosshair--horizontal" aria-hidden="true" />
         <div className="crosshair crosshair--vertical" aria-hidden="true" />
         <div className="feed-scanline" aria-hidden="true" />
+        
+        {/* Heatmap Overlay Layer */}
+        <canvas 
+          ref={canvasRef} 
+          className="live-feed__heatmap" 
+          style={{ 
+            position: 'absolute', 
+            top: 0, 
+            left: 0, 
+            width: '100%', 
+            height: '100%', 
+            pointerEvents: 'none',
+            zIndex: 5
+          }} 
+        />
       </div>
 
       <div className="live-feed__legend">
@@ -83,6 +153,21 @@ export function LiveFeed({ confidenceThreshold }: LiveFeedProps) {
           <span className="legend-swatch legend-swatch--neutral" aria-hidden="true" />
           Zone Tracking
         </div>
+        <button 
+          className={`live-feed__toggle ${showHeatmap ? 'active' : ''}`}
+          onClick={() => setShowHeatmap(!showHeatmap)}
+          style={{
+            background: 'none',
+            border: '1px solid var(--color-border)',
+            padding: '2px 8px',
+            fontSize: '10px',
+            color: showHeatmap ? 'var(--color-accent)' : 'var(--color-text-muted)',
+            cursor: 'pointer',
+            marginLeft: 'auto'
+          }}
+        >
+          {showHeatmap ? 'HEATMAP ON' : 'HEATMAP OFF'}
+        </button>
       </div>
     </div>
   )

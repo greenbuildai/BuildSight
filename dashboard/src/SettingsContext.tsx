@@ -8,11 +8,12 @@ import { createContext, useContext, useState, useEffect, type ReactNode } from '
 // ── Shape ────────────────────────────────────────────────────────────────────
 
 export interface Settings {
+  globalFloor: number
   // ── Per-class confidence thresholds ────────────────────────────────────────
   // These replace the single confidenceThreshold for fine-grained control.
-  workerConf:  number   // 0.20 — workers in low-contrast / dusty scenes score low
-  helmetConf:  number   // 0.30 — raised to suppress hair/shoulder false positives
-  vestConf:    number   // 0.18 — low so partially-occluded vests still pass
+  workerConf:  number   // 0.40 — production default; reliable worker baseline
+  helmetConf:  number   // 0.45 — production default; helmet needs higher bar
+  vestConf:    number   // 0.35 — production default; strong vest colour signature
 
   // ── Per-class NMS IoU thresholds ───────────────────────────────────────────
   // Higher = less NMS suppression = adjacent workers both survive
@@ -41,6 +42,7 @@ export interface Settings {
   restrictedZone: boolean
   showConfScores: boolean
   realtimeAlerts: boolean
+  showHeatmap:    boolean
 
   // Camera & Video
   cameraSource: 'default' | 'external' | 'cctv'
@@ -52,6 +54,7 @@ export interface Settings {
 
   // Appearance
   theme: 'dark' | 'light'
+  dashboardMode: 'heatmap' | 'tactical' | 'hybrid'
   accentColor: string
   uiFontSize: 'small' | 'default' | 'large'
   compactView: boolean
@@ -86,10 +89,11 @@ export interface Settings {
 // ── Defaults ─────────────────────────────────────────────────────────────────
 
 export const DEFAULT_SETTINGS: Settings = {
-  // Per-class conf
-  workerConf:  0.20,
-  helmetConf:  0.30,
-  vestConf:    0.18,
+  globalFloor: 0.35,   // 35% — production floor; all classes enforced above this
+  // Per-class conf — production-calibrated for Indian construction CCTV
+  workerConf:  0.40,   // 40% — reliable worker baseline, excludes most clutter
+  helmetConf:  0.45,   // 45% — helmets are smaller, need a higher bar
+  vestConf:    0.35,   // 35% — strong colour signature, safe at 35%
 
   // Per-class NMS IoU
   workerNmsIou:  0.60,
@@ -106,7 +110,7 @@ export const DEFAULT_SETTINGS: Settings = {
   claheClip:   2.0,
 
   // Legacy
-  confidenceThreshold: 0.25,
+  confidenceThreshold: 0.35,
   iouThreshold:        0.45,
   wbfThreshold:        0.55,
 
@@ -116,6 +120,7 @@ export const DEFAULT_SETTINGS: Settings = {
   restrictedZone: true,
   showConfScores: true,
   realtimeAlerts: true,
+  showHeatmap:    false,
 
   cameraSource: 'default',
   cctvStreamUrl: '',
@@ -125,6 +130,7 @@ export const DEFAULT_SETTINGS: Settings = {
   autoStartDetection: false,
 
   theme: 'dark',
+  dashboardMode: 'tactical',
   accentColor: '#ff4b00',
   uiFontSize: 'default',
   compactView: false,
@@ -188,7 +194,21 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   }, [settings])
 
   const update = <K extends keyof Settings>(key: K, value: Settings[K]) => {
-    setSettings(prev => ({ ...prev, [key]: value }))
+    setSettings(prev => {
+      const next = { ...prev, [key]: value }
+      if (key === 'confidenceThreshold' || key === 'globalFloor') {
+        const floor = Number(value)
+        next.globalFloor = floor
+        next.confidenceThreshold = floor
+        next.workerConf = Math.max(next.workerConf, floor)
+        next.helmetConf = Math.max(next.helmetConf, floor)
+        next.vestConf = Math.max(next.vestConf, floor)
+      }
+      if (key === 'workerConf') next.workerConf = Math.max(Number(value), next.globalFloor)
+      if (key === 'helmetConf') next.helmetConf = Math.max(Number(value), next.globalFloor)
+      if (key === 'vestConf') next.vestConf = Math.max(Number(value), next.globalFloor)
+      return next
+    })
   }
 
   const resetAll = () => setSettings({ ...DEFAULT_SETTINGS })
@@ -197,6 +217,10 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     setSettings(prev => {
       const next = { ...prev }
       keys.forEach(k => { (next as Record<string, unknown>)[k] = DEFAULT_SETTINGS[k] })
+      next.workerConf = Math.max(next.workerConf, next.globalFloor)
+      next.helmetConf = Math.max(next.helmetConf, next.globalFloor)
+      next.vestConf = Math.max(next.vestConf, next.globalFloor)
+      next.confidenceThreshold = next.globalFloor
       return next
     })
   }

@@ -1,0 +1,278 @@
+.god-lock-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(4, 5, 8, 0.95);
+  backdrop-filter: blur(12px);
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+}
+
+.god-lock-background {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.god-lock-grid {
+  width: 100%;
+  height: 100%;
+  background-image: 
+    linear-gradient(rgba(0, 50, 100, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 50, 100, 0.05) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+
+.god-lock-red-glow {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 800px;
+  height: 800px;
+  background: radial-gradient(circle, rgba(255, 0, 0, 0.05) 0%, transparent 70%);
+  opacity: 0.6;
+}
+
+.god-lock-card {
+  width: 480px;
+  background: #0a0d12;
+  border: 1px solid rgba(255, 50, 50, 0.3);
+  box-shadow: 
+    0 0 40px rgba(0, 0, 0, 0.5),
+    inset 0 0 20px rgba(255, 0, 0, 0.05);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+.god-lock-card::before {
+  content: '';
+  position: absolute;
+  top: -1px;
+  left: -1px;
+  right: -1px;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, #ff3b30, transparent);
+}
+
+.god-lock-header {
+  padding: 24px;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  border-bottom: 1px solid rgba(255, 50, 50, 0.1);
+  background: linear-gradient(to right, rgba(255, 0, 0, 0.05), transparent);
+}
+
+.god-lock-alert-icon {
+  font-size: 32px;
+  filter: drop-shadow(0 0 10px rgba(255, 50, 50, 0.5));
+}
+
+.god-lock-titles h2 {
+  margin: 0;
+  font-size: 14px;
+  color: #ff3b30;
+  letter-spacing: 0.1em;
+  font-weight: 800;
+}
+
+.god-lock-titles p {
+  margin: 4px 0 0 0;
+  font-size: 10px;
+  color: #566267;
+  letter-spacing: 0.05em;
+}
+
+.god-lock-content {
+  padding: 40px;
+  min-height: 200px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.god-lock-form-container {
+  width: 100%;
+}
+
+.god-lock-form {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.god-lock-input-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.god-lock-input-wrapper label {
+  font-size: 10px;
+  color: #8a9196;
+  letter-spacing: 0.1em;
+}
+
+.god-lock-input-wrapper input {
+  background: #040508;
+  border: 1px solid #1e2426;
+  padding: 16px;
+  color: #e2e8f0;
+  font-family: inherit;
+  font-size: 16px;
+  outline: none;
+  transition: all 0.2s ease;
+  letter-spacing: 0.3em;
+  text-align: center;
+}
+
+.god-lock-input-wrapper input:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 15px rgba(59, 130, 246, 0.2);
+}
+
+.god-lock-input-wrapper input.god-input-error {
+  border-color: #ff3b30;
+  color: #ff3b30;
+  box-shadow: 0 0 20px rgba(255, 59, 48, 0.2);
+}
+
+.god-lock-input-wrapper input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background: #0d0e12;
+}
+
+.god-lock-timer {
+  font-size: 10px;
+  color: #ff3b30;
+  text-align: center;
+  margin-top: 8px;
+  animation: pulse 1s infinite;
+}
+
+.god-lock-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.god-lock-btn {
+  flex: 1;
+  padding: 12px;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  background: transparent;
+  border: 1px solid #1e2426;
+  color: #8a9196;
+  transition: all 0.2s ease;
+}
+
+.god-lock-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.05);
+  color: #fff;
+}
+
+.god-lock-btn--execute {
+  border-color: rgba(59, 130, 246, 0.4);
+  color: #3b82f6;
+}
+
+.god-lock-btn--execute:hover:not(:disabled) {
+  background: rgba(59, 130, 246, 0.1) !important;
+  border-color: #3b82f6 !important;
+  color: #fff !important;
+}
+
+.god-lock-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.god-lock-attempts {
+  margin-top: 24px;
+  font-size: 9px;
+  color: #455055;
+  text-align: center;
+  letter-spacing: 0.05em;
+}
+
+.god-lock-warning {
+  color: #ff3b30;
+  opacity: 0.7;
+}
+
+.god-lock-footer {
+  padding: 20px 40px;
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.god-lock-line {
+  height: 1px;
+  background: #1e2426;
+  margin-bottom: 12px;
+}
+
+.god-lock-footer-text {
+  display: flex;
+  justify-content: space-between;
+  font-size: 9px;
+  color: #455055;
+}
+
+/* Decryption Loader */
+.god-lock-status {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+}
+
+.god-lock-loader {
+  width: 40px;
+  height: 40px;
+  border: 2px solid rgba(59, 130, 246, 0.1);
+  border-top-color: #3b82f6;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+.god-lock-loader-text {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.god-lock-loader-text span {
+  font-size: 11px;
+  color: #3b82f6;
+  letter-spacing: 0.1em;
+}
+
+.god-lock-loader-sub {
+  font-size: 9px !important;
+  opacity: 0.6;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}

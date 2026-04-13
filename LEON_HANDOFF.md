@@ -1,46 +1,49 @@
-# Leon — Handoff from Toni
-**Date:** 2026-04-05
-**From:** Toni
-**Status:** ACTIVE — Refactor Monitoring Workspace
+# Leon — Handoff from Jovi (Supreme Controller)
+**Date:** 2026-04-09
+**From:** Jovi
+**Status:** ACTIVE — EXECUTE HEATMAP INTELLIGENCE (FULL FORCE)
 
 ---
 
-## Status
+## Mission: GeoAI Heatmap Intelligence Integration
 
-Leon, Phase 2.5 was completed successfully. We are now moving into **Phase 3: Unified Monitoring Hub**.
+Leon, the mission is simple: **Convert raw detection streams into spatial intelligence.**
+The user has approved the plan for real-time heatmap overlays and peak-risk timeline analysis. You are to implement this with "full force."
 
-The goal is to elevate the dashboard from a functional prototype to a polished industrial command center by unifying the live surveillance feed and PPE detection into a single workspace.
-
-## Active Assignment: Monitoring Workspace Consolidation
+## Active Assignment: Spatial Heatmaps & Risk Timeline
 
 ### Objective
-Unify the "Live Surveillance" feed and "PPE Detection" panel into a single, integrated monitoring workspace. Move the "Video" and "Live" mode selectors from the sidebar/bottom-panel to the top navigation header to serve as primary global controls.
+Integrate dynamic heatmap overlays into the `DetectionPanel` (Video/Image) and `LiveFeed` (CCTV) components. Implement a "Peak Risk Moments" panel for video scrubbing.
 
-### Technical Implementation
+### Technical Mission Parameters
 
-1.  **Lift Monitoring State**:
-    - In `App.tsx`, introduce a `dashboardMode` state (`'LIVE' | 'VIDEO' | 'IMAGE'`).
-    - This state will control what is rendered in the `hero-grid__main` area.
+1.  **Canvas-Based Heatmaps (Full Force Performance)**:
+    - Eliminate any reliance on external `heatmap.js` for the frontend.
+    - Implement native HTML5 Canvas drawing using `ctx.createRadialGradient` and `globalCompositeOperation = 'screen'`.
+    - Colors: Green for compliance (Safe), Red/Orange for PPE violations (Risk).
 
-2.  **Top Navigation Mode Selector**:
-    - Build a professional mode switcher component in the `header` (inside `main-body` in `App.tsx`).
-    - This will serve as the primary global control for the dashboard's operational state.
+2.  **DetectionPanel.tsx Evolution**:
+    - **Heatmap Layer**: Buffer the last 150-300 track frames. Render accumulated heat over the video element.
+    - **Peak Risk Timeline**: Scan detections for frames with the highest violation count or density.
+    - **Tactical Scrubbing**: Add a UI panel listing these timestamps. Allow clicking to `seek()` the video.
 
-3.  **Unified Workspace Hub**:
-    - Update `hero-grid__main` to render the appropriate component dynamically based on `dashboardMode`.
-    - `LIVE` will show the interactive surveillance map (`LiveFeed.tsx`).
-    - `VIDEO/IMAGE` will show the detection logic currently in `DetectionPanel.tsx`.
+3.  **LiveFeed.tsx Augmentation**:
+    - Add a `<canvas>` overlay.
+    - Implement a "radar-sweep" or "heat-pulse" logic that renders circles at detection centers, decaying over time.
 
-4.  **Refactor DetectionPanel.tsx**:
-    - Refactor the component to take `mode` as a prop and remove its internal tabs.
-    - Remove the bottom-panel implementation from `App.tsx`, consolidating its functionality into the central hub.
+### Implementation Checklist
+- [ ] Add `heatmapOverlayEnabled` state and toggle in `DetectionPanel`.
+- [ ] Implement `drawHeatmap` helper using native Canvas APIs.
+- [ ] Logic for detecting and storing "Peak Risk Moments" during video playback.
+- [ ] Timeline UI implementation with timestamp scrubbing.
+- [ ] `LiveFeed` canvas integration for real-time heat pulsing.
 
 ### References & Resources
-- [Implementation Plan](file:///C:/Users/brigh/.gemini/antigravity/brain/30e548f9-0a7c-4e4b-995c-71d7fd173690/implementation_plan.md) (Detailed breakdown by Toni)
-- [App.tsx](file:///e:/Company/Green%20Build%20AI/Prototypes/BuildSight/dashboard/src/App.tsx) (Main layout)
-- [DetectionPanel.tsx](file:///e:/Company/Green%20Build%20AI/Prototypes/BuildSight/dashboard/src/components/DetectionPanel.tsx) (Detection logic sources)
-- [App.css](file:///e:/Company/Green%20Build%20AI/Prototypes/BuildSight/dashboard/src/App.css) (Layout styling)
+- [Approved Implementation Plan](file:///C:/Users/brigh/.gemini/antigravity/brain/0585a0fa-d06f-4219-b53d-06585adf713f/implementation_plan.md)
+- [DetectionPanel.tsx](file:///e:/Company/Green%20Build%20AI/Prototypes/BuildSight/dashboard/src/components/DetectionPanel.tsx)
+- [LiveFeed.tsx](file:///e:/Company/Green%20Build%20AI/Prototypes/BuildSight/dashboard/src/components/LiveFeed.tsx)
 
 ---
 
-**Next Steps**: Execute the refactor by updating `App.tsx`, `DetectionPanel.tsx`, and `App.css` in accordance with the established industrial aesthetic.
+**Next Steps**: Do not wait. Execute with precision. BuildSight requires this intelligence layer to be the most premium in the industry.
+**Jovi Monitoring: ON**

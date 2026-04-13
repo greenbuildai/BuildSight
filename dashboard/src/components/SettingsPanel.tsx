@@ -125,6 +125,7 @@ function ActionBtn({ label, variant, onClick }: {
 /* ── Category panels ──────────────────────────────────────────────────────── */
 
 const DETECTION_KEYS: (keyof Settings)[] = [
+  'globalFloor',
   'workerConf', 'helmetConf', 'vestConf',
   'workerNmsIou', 'helmetNmsIou', 'vestNmsIou',
   'wbfWorkerIou', 'wbfHelmetIou', 'wbfVestIou',
@@ -147,6 +148,9 @@ function DetectionTab() {
       <p className="stg-hint" style={{ marginBottom: '0.5rem' }}>
         Minimum score for a detection to pass after WBF fusion. Changes apply on the next inference frame — no restart needed.
       </p>
+      <Slider label="Global Floor" hint="Master minimum confidence; class sliders cannot go below this floor"
+        value={s.globalFloor} min={0.05} max={0.95} step={0.05} unit="%"
+        onChange={v => update('globalFloor', v)} />
       <Slider label="Worker Confidence" hint="Lower catches dusty / low-contrast workers"
         value={s.workerConf} min={0.05} max={0.90} step={0.05} unit="%"
         onChange={v => update('workerConf', v)} />

@@ -1,34 +1,47 @@
-# Handoff to Claude Code
+# Handoff to Claude (Toni)
 
-**Task ID**: HANDOFF-003
+**Task ID**: HANDOFF-004
 **Status**: ready_for_claude
-**Assigned To**: claude
+**Assigned To**: Toni (Claude)
 
 ## Objective
-Re-run the automated annotation pipeline for Normal_Site_Condition to resume an interrupted job.
+Eliminate false positive helmet detections on bare heads, wrists, and hands by implementing a refined multi-gate validation pipeline.
 
 ## Context
-In HANDOFF-002, the pipeline crashed at image 296 due to a progressive GPU memory fragmentation issue (Segmentation Fault / exit code 139).
+Recent recall optimizations (2026-04-11) for crowded scenes (`S4_crowded`) have introduced significant precision regressions. The model is frequently misclassifying skin-toned round regions (bare heads, wrists, palms) as hard hats.
 
-Gemini has applied the following patches to `scripts/annotate_indian_dataset.py`:
-1. **Memory Fix**: Added `torch.cuda.empty_cache()` and `gc.collect()` after `write_yolo_files` (every 10 images) to prevent the CUDA cache from destroying the native C driver over long loops.
-2. **Resume Guard**: Added a skip check that looks for the `.txt` label file in `OUTPUT_DIR / "labels" / split`. If it exists, the script simply `continue`s to the next image without invoking DINO.
+A backup of the current stable/baseline logic has been created at `backups/backup_20260412_0806/`.
 
-Because the previous 296 label files are physically present on disk, the script will rapidly skip the first 296 images and resume inference at image 297, eventually finishing all 1373 images safely.
+## Implementation Plan (Refined)
 
-## Implementation Plan
-1. Validate that the workspace is clean.
-2. Execute the pipeline:
-   ```bash
-   python scripts/annotate_indian_dataset.py --conditions Normal_Site_Condition --skip-sam
-   ```
-3. Wait for the `ANNOTATION COMPLETE` message. You should see the progress bar rapidly skip the first 296 images and then slow down to standard inference speed (~5s/img).
-4. Monitor system resources. If another crash occurs, note the image ID and exit code in your handback.
-5. If successful, complete the execution, update `TASK_STATE.json` to "pending_gemini", and write a detailed handback report in `GEMINI_HANDBACK.md` specifying exactly how many images were skipped vs processed.
+### 1. Helmet Validation Layer (`scripts/adaptive_postprocess.py`)
+Implement a `HelmetValidationLayer` with the following gates:
+- **`_gate_vertical_ratio`**: Helmets MUST be located within the top **35%** of the associated worker's bounding box height.
+- **`_gate_skin_tone` (Penalty-Based)**: 
+  - **IMPORTANT**: Use skin-tone rejection as a **penalty**, not a hard reject.
+  - **Preserve**: Orange, Yellow, Faded White, Beige, and Dusty helmets.
+  - **Hard Reject ONLY if**: 
+    - Skin-tone confidence is high (HSV range overlap with flesh tones).
+    - Texture looks soft/skin-like (low Laplacian/Sobel edge density).
+    - Helmet is outside the upper head zone (>35% from top).
+    - Worker association score is weak.
+- **`_gate_texture`**: Use edge density to separate smooth hard hats from hair or cloth textures.
+
+### 2. Strengthened Association Logic
+- Update `has_worker_overlap` in `scripts/adaptive_postprocess.py` to enforce the vertical constraint.
+- Tighten worker-to-helmet association rules to prevent "floating" helmet detections.
+
+### 3. Ensemble Integration (`scripts/site_aware_ensemble.py`)
+- Apply the same validation rules consistently across the WBF ensemble.
+- Refine `_worker_has_ppe` and `_copy_ppe_from_track` to ensure synthetic helmet placement adheres to the new geometric and skin-tone constraints.
+
+## Verification Plan
+1. Run the `run()` validation test in `adaptive_postprocess.py` to compare precision/recall against the baseline.
+2. Verify that **Orange, Yellow, and White** helmets are NOT suppressed.
+3. Confirm that wrist/palm detections are eliminated.
 
 ## Required Output (in GEMINI_HANDBACK.md)
 - **Status**: success / failure
-- **Summary**: Did the memory fix prevent the crash? How many images were processed in this run vs skipped? 
-- **Files Modified**: e.g., `Dataset/Final_Annotated_Dataset/labels/*`
-- **Commands Run**: List commands
-- **Open Issues**: Identify any outstanding bugs or COCO/Metadata gaps resulting from the fragmented run.
+- **Summary**: Precision improvement % and impact on recall for crowded scenes.
+- **Files Modified**: `scripts/adaptive_postprocess.py`, `scripts/site_aware_ensemble.py`.
+- **Open Issues**: Any remaining corner cases (e.g., extremely low-light skin vs brown helmet confusion).

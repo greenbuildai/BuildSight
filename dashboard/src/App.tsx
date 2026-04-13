@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, type CSSProperties } from 'react'
+import { AnimatePresence } from 'framer-motion'
 import './App.css'
 import { AlertLog, type AlertItem } from './components/AlertLog'
 import { LiveFeed } from './components/LiveFeed'
@@ -10,9 +11,9 @@ import { DetectionStatsProvider, useDetectionStats } from './DetectionStatsConte
 import { TurnerAssistant } from './components/TurnerAssistant'
 import { AnalyticsPage } from './components/AnalyticsPage'
 import { GeoAIPage } from './components/GeoAIPage'
-import { GodModePage } from './components/GodModePage'
+import { BuildSightBrain } from './components/BuildSightBrain'
+import { GodLock } from './components/GodLock'
 import { PageTransition } from './components/AnimatedLayout'
-
 /* Static fallback metrics — replaced by live data when detection is running */
 const STATIC_METRICS = [
   {
@@ -85,7 +86,7 @@ const alerts: AlertItem[] = [
 
 
 
-type View = 'dashboard' | 'settings' | 'analytics' | 'geoai' | 'godMode'
+type View = 'dashboard' | 'settings' | 'analytics' | 'geoai' | 'brain'
 type DashboardMode = 'LIVE' | 'VIDEO' | 'IMAGE'
 
 function formatIstSnapshot() {
@@ -118,6 +119,48 @@ function AppInner() {
   const [dashboardMode, setDashboardMode] = useState<DashboardMode>('LIVE')
   const [summaryCollapsed, setSummaryCollapsed] = useState(false)
   const [snapshotTimestamp, setSnapshotTimestamp] = useState(() => formatIstSnapshot())
+  
+  // ── GOD MODE Security State ───────────────────────────────────────────────
+  const [isGodUnlocked, setIsGodUnlocked] = useState(false)
+  const [showGodLock, setShowGodLock]   = useState(false)
+
+  // Check persistence on load
+  useEffect(() => {
+    const unlockedAt = localStorage.getItem('godModeUnlockedAt')
+    if (unlockedAt) {
+      const timeElapsed = Date.now() - parseInt(unlockedAt, 10)
+      const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000
+      if (timeElapsed < TWENTY_FOUR_HOURS) {
+        setIsGodUnlocked(true)
+      } else {
+        localStorage.removeItem('godModeUnlockedAt')
+        localStorage.removeItem('godModeUnlocked')
+      }
+    }
+  }, [])
+
+  const handleGodModeAccess = () => {
+    if (isGodUnlocked) {
+      setView('brain')
+    } else {
+      setShowGodLock(true)
+    }
+  }
+
+  const onGodUnlockSuccessful = () => {
+    setIsGodUnlocked(true)
+    setShowGodLock(false)
+    localStorage.setItem('godModeUnlocked', 'true')
+    localStorage.setItem('godModeUnlockedAt', Date.now().toString())
+    setView('brain')
+  }
+
+  const handleLockSystem = () => {
+    setIsGodUnlocked(false)
+    localStorage.removeItem('godModeUnlocked')
+    localStorage.removeItem('godModeUnlockedAt')
+    setView('dashboard')
+  }
 
   useEffect(() => {
     const intervalId = window.setInterval(() => {
@@ -163,7 +206,7 @@ function AppInner() {
       },
       {
         label: 'High-Vis Vest',
-        value: `${vestPct.toFixed(1)}%%`,
+        value: `${vestPct.toFixed(1)}%`,
         delta: stats.isRunning ? 'LIVE' : '+0.0%',
         status: vestStatus,
         progress: vestPct,
@@ -251,7 +294,8 @@ function AppInner() {
   )
 
   return (
-    <div className={`app-shell ${settings.compactView ? 'app-shell--compact' : ''}`}>
+    <div className={`app-shell ${settings.compactView ? 'app-shell--compact' : ''} ${view === 'brain' ? 'app-shell--god-mode' : ''}`}>
+      {view !== 'brain' && (
       <aside className="sidebar panel">
         <div className="sidebar__brand" onClick={() => { setView('dashboard'); setDashboardMode('LIVE'); }} role="button" tabIndex={0} aria-label="Go to dashboard home" style={{ cursor: 'pointer' }}>
           <img src="/logo.png" alt="BuildSight Logo" className="brand-logo" />
@@ -338,24 +382,25 @@ function AppInner() {
           <div className="sidebar__section">
             <p className="section-label">System</p>
             <button
-              className={`nav-link nav-link--settings ${view === 'godMode' ? 'nav-link--active' : ''}`}
-              onClick={() => setView('godMode')}
+              className="nav-link"
+              onClick={handleGodModeAccess}
             >
-              God Mode
+              GOD MODE
             </button>
           </div>
         </div>
 
-        <div className="sidebar__footer">
-          <p className="section-label">System Access</p>
-          <button
-            className={`nav-link nav-link--settings ${view === 'settings' ? 'nav-link--active' : ''}`}
-            onClick={() => setView('settings')}
-          >
-            ⚙ Settings
-          </button>
-        </div>
-      </aside>
+          <div className="sidebar__footer">
+            <p className="section-label">System Access</p>
+            <button
+              className={`nav-link nav-link--settings ${view === 'settings' ? 'nav-link--active' : ''}`}
+              onClick={() => setView('settings')}
+            >
+              ⚙ Settings
+            </button>
+          </div>
+        </aside>
+      )}
 
       <PageTransition viewKey={view}>
       {view === 'dashboard' && (
@@ -517,8 +562,23 @@ function AppInner() {
           </section>
         </main>
       )}
-      {view === 'godMode' && <GodModePage onBack={() => setView('dashboard')} />}
+        {view === 'brain' && (
+          <BuildSightBrain 
+            onBack={() => setView('dashboard')} 
+            onLock={handleLockSystem}
+          />
+        )}
       </PageTransition>
+
+      {/* ── SECURITY OVERLAYS ─────────────────────────────────────────────────── */}
+      <AnimatePresence>
+        {showGodLock && (
+          <GodLock 
+            onUnlock={onGodUnlockSuccessful} 
+            onClose={() => setShowGodLock(false)} 
+          />
+        )}
+      </AnimatePresence>
     </div>
 )
 }

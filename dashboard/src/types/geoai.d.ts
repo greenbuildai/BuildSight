@@ -97,6 +97,13 @@ export interface SiteStats {
   critical_zones: number
 }
 
+export interface HeatmapGridPayload {
+  cols: number
+  rows: number
+  resolution_m: number
+  data: number[]
+}
+
 export interface HeatmapUpdatePayload {
   type: 'heatmap_update'
   cycle: number
@@ -109,6 +116,7 @@ export interface HeatmapUpdatePayload {
   trails?: WorkerTrail[]
   kpi?: KPISummary
   backend_health?: BackendHealth[]
+  heatmap?: HeatmapGridPayload // Grid density data from the backend
 }
 
 /* ── Intelligence v2 Types ─────────────────────────────────────────────── */
@@ -224,5 +232,41 @@ export interface ZoneCollection {
 
 export type GeoAIMode = 'HEATMAP' | '3D ZONES' | 'TRACKING'
 export type GeoAIVisualMode = 'tactical' | 'satellite' | 'plan2d' | 'view3d'
+
+/* ── Dynamic Zones (operator-drawn geofences) ────────────────────────────── */
+
+export type ZoneRiskLevel = 'low' | 'moderate' | 'high' | 'critical' | 'safe'
+export type ZoneType = 'restricted' | 'work' | 'hazard' | 'safe' | 'custom'
+
+export interface DynamicZone {
+  id: string
+  name: string
+  risk_level: ZoneRiskLevel
+  zone_type: ZoneType
+  color: string
+  coordinates: [number, number][]   // ring of [lng, lat] pairs (GeoJSON order)
+  description: string
+  created_at: number                // Unix timestamp
+  is_active: boolean
+}
+
+export interface DynamicZoneCreate {
+  name: string
+  risk_level?: ZoneRiskLevel
+  zone_type?: ZoneType
+  color?: string
+  coordinates: [number, number][]
+  description?: string
+}
+
+/* ── VLM (Moondream2 site descriptions) ──────────────────────────────────── */
+
+export interface VLMEntry {
+  description: string
+  timestamp: number
+  source: 'moondream2' | 'rule_based'
+  question: string
+  vlm_available: boolean
+}
 
 export {}
