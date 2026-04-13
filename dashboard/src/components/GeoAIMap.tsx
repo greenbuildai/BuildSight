@@ -18,7 +18,7 @@ const LABEL_OFFSET_METERS: Record<string, [number, number]> = {
 }
 
 const RISK_COLORS: Record<string, string> = {
-  CRITICAL: '#ef4444', 
+  CRITICAL: '#ef4444',
   HIGH: '#f97316',
   MODERATE: '#ffd600',
   LOW: '#10b981',
@@ -112,7 +112,7 @@ function denormalizeLatLng(point: LatLngTuple, center: LatLngTuple, rotationDelt
 
 function computeOverlayCenter(features: ZoneFeature[] | undefined): LatLngTuple {
   if (!features || !Array.isArray(features) || features.length === 0) return SITE_CENTER;
-  
+
   const cornerPoints = features
     .filter((feature) => feature.geometry?.type === 'Point' && feature.properties?.type === 'building_corner')
     .map((f) => (f.geometry as any).coordinates as [number, number]);
@@ -159,7 +159,7 @@ export function GeoAIMap({
   const dynamicZonesLayerRef = useRef<L.LayerGroup | null>(null)
   const samLayerRef = useRef<L.LayerGroup | null>(null)
   const vlmLayerRef = useRef<L.LayerGroup | null>(null)
-  
+
   const [analysisHistory, setAnalysisHistory] = useState<any[]>([])
   const [hoverCoords, setHoverCoords] = useState<[number, number] | null>(null)
   const [showHistory, setShowHistory] = useState(false)
@@ -227,7 +227,7 @@ export function GeoAIMap({
         const response = await fetch('/buildsight_zones_complete.geojson')
         if (!response.ok) throw new Error('Static GeoJSON fetch failed')
         const data = await response.json()
-        
+
         console.log('GeoAI: Successfully loaded zones from static GeoJSON')
         setGeoData(data)
         lastValidZonesRef.current = data
@@ -240,14 +240,14 @@ export function GeoAIMap({
           const apiResponse = await fetch('http://localhost:8000/api/geoai/zones')
           if (!apiResponse.ok) throw new Error('Backend API fetch failed')
           const apiData = await apiResponse.json()
-          
+
           console.log('GeoAI: Successfully loaded zones from Backend API')
           setGeoData(apiData)
           lastValidZonesRef.current = apiData
           setFetchError(null)
         } catch (apiErr) {
           console.error('GeoAI: Failed to load zones from all sources', apiErr)
-          
+
           // Final fallback: Use last valid or Site Center default
           if (lastValidZonesRef.current) {
             console.log('GeoAI: Reusing last valid zone data from memory')
@@ -390,8 +390,8 @@ export function GeoAIMap({
           const res = await fetch('/api/geoai/vlm/spatial-query', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
-              lat: realWorldGps[0], 
+            body: JSON.stringify({
+              lat: realWorldGps[0],
               lon: realWorldGps[1],
               question: "Assess site activity at this exact coordinate. Identify any missing PPE or safety risks."
             }),
@@ -619,29 +619,29 @@ export function GeoAIMap({
     if (data.heatmap) {
       const { cols, rows, resolution_m, data: gridData } = data.heatmap
       const hmData = []
-      
+
       const angleRad = (85.0 * Math.PI) / 180
       const cosA = Math.cos(angleRad)
       const sinA = Math.sin(angleRad)
-      
+
       const siteSwLat = 10.81658333
       const siteSwLon = 78.66873333
       const mLat = 110574.0
       const mLon = 111319.0 * Math.cos((siteSwLat * Math.PI) / 180)
-      
+
       for (let r = 0; r < rows; r++) {
         for (let c = 0; c < cols; c++) {
           const value = gridData[r * cols + c]
           if (value > 0.05) {
             const wx = c * resolution_m + resolution_m / 2
             const wy = r * resolution_m + resolution_m / 2
-            
+
             const rx = wx * cosA - wy * sinA
             const ry = wx * sinA + wy * cosA
-            
+
             const lat = siteSwLat + ry / mLat
             const lon = siteSwLon + rx / mLon
-            
+
             const [nLat, nLng] = normalizeLatLng([lat, lon])
             hmData.push({ lat: nLat, lng: nLng, value })
           }
@@ -766,7 +766,7 @@ export function GeoAIMap({
     samSegments.forEach(seg => {
       const feature = seg.geojson
       const coords = feature.geometry.coordinates[0].map((c: any) => normalizeLngLat(c as LngLatTuple))
-      
+
       const poly = L.polygon(coords, {
         color: '#00e5ff',
         weight: 2,
@@ -796,7 +796,7 @@ export function GeoAIMap({
           <div className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" style={{ boxShadow: 'var(--geoai-glow)' }} />
           <span className="geoai-hud-label geoai-glow-text">Spatial Logic Active</span>
         </div>
-        
+
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: '24px' }}>
           <div className="geoai-hud-metric">
             <span className="geoai-hud-label">Projection</span>
@@ -807,9 +807,9 @@ export function GeoAIMap({
             <span className="geoai-hud-value" style={{ color: 'var(--color-accent)' }}>±0.008m</span>
           </div>
         </div>
-        
+
         <div style={{ height: '1px', width: '100%', background: 'rgba(255,255,255,0.05)', margin: '4px 0' }} />
-        
+
         <div className="geoai-hud-metric">
           <span className="geoai-hud-label">GPS Cursor</span>
           <span className="geoai-hud-value">
@@ -833,7 +833,7 @@ export function GeoAIMap({
           </svg>
           <span>Segmentation</span>
         </button>
-        
+
         <button
           onClick={() => setMapMode('expert')}
           className={`geoai-action-button geoai-action-button--purple ${mapMode === 'expert' ? 'geoai-action-button--active' : ''}`}
@@ -856,7 +856,7 @@ export function GeoAIMap({
             <svg className="geoai-tool-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" /></svg>
           </button>
         </div>
-        
+
         <div className="geoai-sidebar-content custom-scrollbar">
           {analysisHistory.length === 0 ? (
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', opacity: 0.2, textAlign: 'center', padding: '40px' }}>
@@ -883,28 +883,28 @@ export function GeoAIMap({
             ))
           )}
         </div>
-        
+
         <div style={{ padding: '24px', borderTop: '1px solid var(--geoai-border)', background: 'rgba(255,255,255,0.02)' }}>
-           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', fontWeight: 700, color: 'rgba(255,255,255,0.2)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
-             <span>Total Scans: {analysisHistory.length}</span>
-             <span style={{ color: 'var(--color-accent)', opacity: 0.5 }}>V1.2.4-PRO</span>
-           </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', fontWeight: 700, color: 'rgba(255,255,255,0.2)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+            <span>Total Scans: {analysisHistory.length}</span>
+            <span style={{ color: 'var(--color-accent)', opacity: 0.5 }}>V1.2.4-PRO</span>
+          </div>
         </div>
       </div>
 
       {/* History Slide Toggle */}
       {!showHistory && analysisHistory.length > 0 && (
-        <button 
+        <button
           onClick={() => setShowHistory(true)}
           className="geoai-glass geoai-sidebar-layer"
-          style={{ 
-            position: 'absolute', 
-            right: 0, 
-            top: '50%', 
-            transform: 'translateY(-50%)', 
-            width: '48px', 
-            height: '180px', 
-            borderRadius: '24px 0 0 24px', 
+          style={{
+            position: 'absolute',
+            right: 0,
+            top: '50%',
+            transform: 'translateY(-50%)',
+            width: '48px',
+            height: '180px',
+            borderRadius: '24px 0 0 24px',
             borderRight: 'none',
             display: 'flex',
             flexDirection: 'column',
@@ -928,15 +928,15 @@ export function GeoAIMap({
             <div style={{ position: 'absolute', inset: 0, border: '4px solid rgba(168, 85, 247, 0.1)', borderRadius: '50%', animation: 'ping 3s infinite' }} />
             <div style={{ position: 'absolute', inset: 0, border: '6px solid var(--geoai-border)', borderTopColor: 'var(--color-accent)', borderBottomColor: '#a855f7', borderRadius: '50%', animation: 'spin 4s linear infinite', boxShadow: '0 0 50px rgba(0, 229, 255, 0.2)' }} />
           </div>
-          
+
           <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', gap: '12px' }}>
             <h2 className="geoai-glow-text" style={{ fontSize: '24px', fontWeight: 900, textTransform: 'uppercase', color: '#fff' }}>
               {isQuerying ? 'Consulting Expert VLM' : 'Generating Mesh'}
             </h2>
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px', justifyContent: 'center' }}>
-               <div style={{ height: '2px', width: '40px', background: 'linear-gradient(to right, transparent, var(--color-accent))' }} />
-               <span className="geoai-hud-label" style={{ opacity: 0.6 }}>Spatial Intelligence Active</span>
-               <div style={{ height: '2px', width: '40px', background: 'linear-gradient(to left, transparent, #a855f7)' }} />
+              <div style={{ height: '2px', width: '40px', background: 'linear-gradient(to right, transparent, var(--color-accent))' }} />
+              <span className="geoai-hud-label" style={{ opacity: 0.6 }}>Spatial Intelligence Active</span>
+              <div style={{ height: '2px', width: '40px', background: 'linear-gradient(to left, transparent, #a855f7)' }} />
             </div>
           </div>
         </div>
