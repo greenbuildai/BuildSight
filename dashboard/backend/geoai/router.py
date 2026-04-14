@@ -377,7 +377,7 @@ async def vlm_query(body: VLMQueryRequest):
 
 @router.get("/vlm/status")
 async def vlm_status():
-    from ..geoai_vlm_util import is_available  # type: ignore
+    from geoai_vlm_util import is_available  # type: ignore
     return {"available": is_available()}
 
 
@@ -427,7 +427,7 @@ async def spatial_vlm_query(request: SpatialVLMRequest):
     """
     start_time = time.time()
     try:
-        from ..geoai_vlm_util import describe_frame_async
+        from geoai_vlm_util import describe_frame_async
         mapper = _get_mapper()
         
         # 1. Coordinate conversion: GPS -> Local Meters -> Pixels
@@ -493,7 +493,7 @@ async def spatial_vlm_query(request: SpatialVLMRequest):
 @router.get("/sam/status", response_model=SAMStatusResponse)
 async def sam_status():
     """Check health and device state of the SAM inference engine."""
-    from ..geoai_sam_util import is_available, _SAM_MODEL
+    from geoai_sam_util import is_available, _SAM_MODEL
     import torch
     
     is_ready = is_available()
@@ -521,7 +521,7 @@ async def sam_prompt(body: SAMPromptRequest):
     Interactive SAM segmentation based on frontend click prompts.
     Converts polygons to rich GeoJSON with world-space metadata.
     """
-    from ..geoai_sam_util import segment_frame_async, is_available
+    from geoai_sam_util import segment_frame_async, is_available
     import numpy as np
     import cv2
 

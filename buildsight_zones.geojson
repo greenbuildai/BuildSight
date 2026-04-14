@@ -1,0 +1,289 @@
+{
+  "type": "FeatureCollection",
+  "crs": {
+    "type": "name",
+    "properties": {
+      "name": "EPSG:4326"
+    }
+  },
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "zone": "site_boundary",
+        "risk": "none",
+        "alert": false,
+        "description": "Full construction site boundary (3m buffer around building)"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              78.6688059,
+              10.8165562
+            ],
+            [
+              78.66903362,
+              10.8165562
+            ],
+            [
+              78.66903362,
+              10.81669864
+            ],
+            [
+              78.6688059,
+              10.81669864
+            ],
+            [
+              78.6688059,
+              10.8165562
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "zone": "high_risk_scaffolding",
+        "risk": "HIGH",
+        "alert": true,
+        "alert_level": "CRITICAL",
+        "description": "Scaffolding and outer wall perimeter zone"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              78.66881504,
+              10.81656525
+            ],
+            [
+              78.66902448,
+              10.81656525
+            ],
+            [
+              78.66902448,
+              10.8166896
+            ],
+            [
+              78.66881504,
+              10.8166896
+            ],
+            [
+              78.66881504,
+              10.81656525
+            ]
+          ],
+          [
+            [
+              78.66884248,
+              10.81659238
+            ],
+            [
+              78.66899704,
+              10.81659238
+            ],
+            [
+              78.66899704,
+              10.81666247
+            ],
+            [
+              78.66884248,
+              10.81666247
+            ],
+            [
+              78.66884248,
+              10.81659238
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "zone": "high_risk_staircase",
+        "risk": "HIGH",
+        "alert": true,
+        "alert_level": "CRITICAL",
+        "description": "Staircase zone (NW corner, UP arrow from plan)"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              78.66883333,
+              10.81665071
+            ],
+            [
+              78.66887796,
+              10.81665071
+            ],
+            [
+              78.66887796,
+              10.81667151
+            ],
+            [
+              78.66883333,
+              10.81667151
+            ],
+            [
+              78.66883333,
+              10.81665071
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "zone": "moderate_risk_interior",
+        "risk": "MODERATE",
+        "alert": true,
+        "alert_level": "WARNING",
+        "description": "Interior active construction zone"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              78.66884248,
+              10.81659238
+            ],
+            [
+              78.66897655,
+              10.81659238
+            ],
+            [
+              78.66897655,
+              10.81666247
+            ],
+            [
+              78.66884248,
+              10.81666247
+            ],
+            [
+              78.66884248,
+              10.81659238
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "zone": "low_risk_parking",
+        "risk": "LOW",
+        "alert": true,
+        "alert_level": "ADVISORY",
+        "description": "Car parking and site support area"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              78.66898113,
+              10.81658333
+            ],
+            [
+              78.66900619,
+              10.81658333
+            ],
+            [
+              78.66900619,
+              10.81667151
+            ],
+            [
+              78.66898113,
+              10.81667151
+            ],
+            [
+              78.66898113,
+              10.81658333
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "zone": "camera_CAM01",
+        "type": "camera",
+        "camera_id": "CAM-01",
+        "coverage": "NW+SW quadrant",
+        "mount_height_m": 6.096,
+        "mount_height_ft": 20
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          78.66883059,
+          10.81667422
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "zone": "camera_CAM02",
+        "type": "camera",
+        "camera_id": "CAM-02",
+        "coverage": "NE+SE quadrant",
+        "mount_height_m": 6.096,
+        "mount_height_ft": 20
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          78.66900893,
+          10.81667422
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "zone": "camera_CAM03",
+        "type": "camera",
+        "camera_id": "CAM-03",
+        "coverage": "South wall full width",
+        "mount_height_m": 4.877,
+        "mount_height_ft": 16
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          78.66891976,
+          10.81657881
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "zone": "camera_CAM04",
+        "type": "camera",
+        "camera_id": "CAM-04",
+        "coverage": "Top-down roof view",
+        "mount_height_m": 6.096,
+        "mount_height_ft": 20
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          78.66891976,
+          10.81662742
+        ]
+      }
+    }
+  ]
+}
