@@ -3,34 +3,24 @@ import type { HeatmapUpdatePayload, ZoneCollection, ZoneFeature, DynamicZone } f
 
 const SITE_CENTER: [number, number] = [10.81662, 78.66891]
 const INITIAL_ZOOM = 19
-const TARGET_OVERLAY_ROTATION_DEG = 85.0
+const TARGET_OVERLAY_ROTATION_DEG = 85
 const OVERLAY_OFFSET_METERS: [number, number] = [8.5, -4.5]
 const OVERLAY_SCALE = 0.72
-const CAMERA_OFFSET_METERS: [number, number] = [1.2, 0]
-const CAMERA_FOV_SCALE = 1.16
-const LABEL_OFFSET_METERS: Record<string, [number, number]> = {
-  high_risk_scaffolding: [0, 2.4],
-  high_risk_staircase: [-1.1, 0.85],
-  excavation_zone: [-2.0, -1.0],
-  formwork_area: [2.0, 1.0],
-  moderate_risk_interior: [0, 0],
-  low_risk_parking: [1.1, 0],
-}
 
 const RISK_COLORS: Record<string, string> = {
-  CRITICAL: '#ef4444',
-  HIGH: '#f97316',
-  MODERATE: '#ffd600',
-  LOW: '#10b981',
-  none: '#00b4d8',
+  CRITICAL: '#ff5252',
+  HIGH: '#ff7043',
+  MODERATE: '#ffca28',
+  LOW: '#5bb8ff',
+  none: '#5bb8ff',
 }
 
-const RISK_FILL_OPACITY: Record<string, number> = {
-  CRITICAL: 0.45,
-  HIGH: 0.35,
-  MODERATE: 0.25,
-  LOW: 0.15,
-  none: 0.1,
+const RISK_OPACITY_RANGE: Record<string, { min: number, max: number }> = {
+  CRITICAL: { min: 0.12, max: 0.16 },
+  HIGH: { min: 0.10, max: 0.14 },
+  MODERATE: { min: 0.08, max: 0.10 },
+  LOW: { min: 0.06, max: 0.08 },
+  none: { min: 0.03, max: 0.05 },
 }
 
 interface GeoAIMapProps {
@@ -224,7 +214,7 @@ export function GeoAIMap({
     const loadGeoZones = async () => {
       try {
         // Step 1: Try static public GeoJSON
-        const response = await fetch('/buildsight_zones_complete.geojson')
+        const response = await fetch('/buildsight_zones.geojson')
         if (!response.ok) throw new Error('Static GeoJSON fetch failed')
         const data = await response.json()
 
@@ -445,22 +435,7 @@ export function GeoAIMap({
 
   // Unified Rendering Effect for Zones and Labels
   useEffect(() => {
-    console.log('[ZONE_RENDER] Guard check:', {
-      mapReady,
-      hasMap: !!mapRef.current,
-      hasGeoData: !!geoData,
-      featureCount: geoData?.features?.length,
-      hasZonesLayer: !!zonesLayerRef.current,
-      hasLabelsLayer: !!labelsLayerRef.current,
-      hasFovLayer: !!fovLayerRef.current,
-      showZones,
-      showLabels,
-      showCameraFOV
-    })
-    if (!mapRef.current || !geoData || !zonesLayerRef.current || !labelsLayerRef.current || !fovLayerRef.current) {
-      console.warn('[ZONE_RENDER] EARLY EXIT — missing deps')
-      return
-    }
+    if (!mapRef.current || !geoData || !zonesLayerRef.current || !labelsLayerRef.current || !fovLayerRef.current) return
 
     // Always clear existing layers first to avoid stale artifacts
     zonesLayerRef.current.clearLayers()
@@ -472,84 +447,32 @@ export function GeoAIMap({
     const baseZoneFillOpacity = mapMode === 'expert' ? 0.60 : 0.90
     const labelOpacity = 1.0
 
-    console.log('[ZONE_RENDER] Rendering', geoData.features.length, 'features')
+    const features: ZoneFeature[] = geoData.features || (geoData as any).zones?.map((z: any) => ({
+      type: 'Feature',
+      properties: z.properties || {},
+      geometry: { type: 'Polygon', coordinates: z.coordinates }
+    })) || []
 
-    geoData.features.forEach((feature: ZoneFeature) => {
+    features.forEach((feature: ZoneFeature) => {
       const props = feature.properties
       const geom = feature.geometry
       if (!geom) return
 
-      if (geom.type === 'Point') {
-        if (props.type === 'camera' && showCameraFOV) {
-          const coord = offsetLatLng(
-            normalizeLngLat(geom.coordinates as LngLatTuple),
-            CAMERA_OFFSET_METERS
-          )
-          const camIcon = L.divIcon({
-            className: 'geoai-camera-marker',
-            html: `<div style="
-              background: rgba(0, 180, 216, 0.9);
-              border: 2px solid #fff;
-              border-radius: 50%;
-              width: 22px; height: 22px;
-              display: flex; align-items: center; justify-content: center;
-              font-size: 12px; box-shadow: 0 0 12px rgba(0,229,255,0.6);
-            ">📷</div>`,
-            iconSize: [22, 22],
-            iconAnchor: [11, 11],
-          })
-          const camMarker = L.marker(coord, { icon: camIcon, zIndexOffset: 500 })
-          camMarker.bindPopup(`
-            <div class="geoai-popup">
-              <strong>${props.camera_id ?? 'CAM'}</strong><br/>
-              Height: ${props.height_ft ?? '?'}ft<br/>
-              Direction: ${props.direction ?? '?'}<br/>
-              Placement: Neighbour building (North)
-            </div>
-          `, { className: 'geoai-popup-container' })
-          fovLayerRef.current?.addLayer(camMarker)
-        }
-        return
-      }
-
       const risk = (props.risk || 'none').toUpperCase()
-      const isFOV = props.type === 'camera_coverage' || props.zone?.includes('camera_fov')
-      const isBoundary = props.zone === 'site_boundary'
-
-      if (isFOV && showCameraFOV) {
-        const baseCoords = (geom.coordinates as number[][][])[0].map(
-          (c: number[]) => normalizeLngLat(c as LngLatTuple)
-        )
-        const apex = offsetLatLng(baseCoords[0], CAMERA_OFFSET_METERS)
-        const coords = baseCoords.map((coord, index, allCoords) => {
-          if (index === 0 || index === allCoords.length - 1) return apex
-          return scaleLatLng(
-            offsetLatLng(coord, CAMERA_OFFSET_METERS),
-            apex,
-            CAMERA_FOV_SCALE
-          )
-        })
-        const fovPoly = L.polygon(coords, {
-          color: '#00e5ff',
-          weight: 1,
-          dashArray: '6 4',
-          fillColor: '#00e5ff',
-          fillOpacity: 0.12,
-          className: 'geoai-fov-layer transition-all duration-300'
-        })
-        fovLayerRef.current?.addLayer(fovPoly)
-        return
-      }
+      const isBoundary = props.zone === 'site_boundary' || props.zone_id === 'site_boundary'
+      const isSegmentMode = mapMode === 'segment'
 
       if (isBoundary && showZones) {
         const coords = (geom.coordinates as number[][][])[0].map(
           (c: number[]) => normalizeLngLat(c as LngLatTuple)
         )
         const boundaryPoly = L.polygon(coords, {
-          color: '#c0cdd9',
+          color: '#5bb8ff',
           weight: 2,
           dashArray: '8 6',
-          fill: false,
+          fillColor: '#5bb8ff',
+          fillOpacity: isSegmentMode ? 0.03 : 0.05,
+          opacity: 0.8,
           className: 'geoai-boundary-layer'
         })
         zonesLayerRef.current?.addLayer(boundaryPoly)
@@ -558,21 +481,18 @@ export function GeoAIMap({
 
       if (showZones) {
         const zoneColor = RISK_COLORS[risk] || RISK_COLORS.none
-        const dynamicFillOpacity = (RISK_FILL_OPACITY[risk] || 0.1) * (baseZoneFillOpacity / 0.4)
+        const opacityConfig = RISK_OPACITY_RANGE[risk] || RISK_OPACITY_RANGE.none
+        const dynamicFillOpacity = isSegmentMode ? opacityConfig.min : opacityConfig.max
 
         if (geom.type === 'Polygon') {
           const rings = (geom.coordinates as number[][][]).map(ring =>
             ring.map((c: number[]) => normalizeLngLat(c as LngLatTuple))
           )
-          // Log the first zone's transformed coordinates
-          if (props.zone === 'site_boundary' || props.zone === 'high_risk_scaffolding') {
-            const rawFirst = (geom.coordinates as number[][][])[0][0]
-            const normalized = rings[0][0]
-            console.log(`[ZONE_COORDS] ${props.zone}: raw=[${rawFirst}] → normalized=[${normalized}] overlayCenter=[${overlayCenter}] rotDelta=${overlayRotationDelta}`)
-          }
+          
           const zonePoly = L.polygon(rings, {
             color: zoneColor,
-            weight: 1.5,
+            weight: 2,
+            opacity: 0.9,
             fillColor: zoneColor,
             fillOpacity: dynamicFillOpacity,
             className: 'geoai-zone-path transition-all duration-300'
@@ -582,22 +502,27 @@ export function GeoAIMap({
           if (showLabels) {
             const bounds = zonePoly.getBounds()
             const center = bounds.getCenter()
-            const labelPosition = offsetLatLng(
-              [center.lat, center.lng],
-              LABEL_OFFSET_METERS[props.zone ?? ''] ?? [0, 0]
-            )
-            const labelText = (props.zone || '').replace(/_/g, ' ').toUpperCase()
-            const labelMarker = L.marker(labelPosition, {
+            const labelText = (props.display_name || props.zone || props.zone_id || '').replace(/_/g, ' ').toUpperCase()
+            
+            const labelMarker = L.marker([center.lat, center.lng], {
               icon: L.divIcon({
                 className: 'geoai-zone-label',
                 html: `
                   <div class="geoai-label-wrapper transition-opacity duration-300" style="opacity: ${labelOpacity}">
-                    <span style="color:${zoneColor}; text-shadow: 0 0 10px rgba(0,0,0,0.8); font-weight: 800; letter-spacing: 0.05em;">${labelText}</span>
+                    <span style="
+                      color: ${zoneColor}; 
+                      text-shadow: 0 0 8px rgba(0,0,0,0.7); 
+                      font-weight: 700; 
+                      font-size: 11px;
+                      letter-spacing: 1px;
+                      text-transform: uppercase;
+                    ">${labelText}</span>
                   </div>
                 `,
                 iconSize: [120, 16],
                 iconAnchor: [60, 8],
               }),
+              interactive: false,
               zIndexOffset: 1000
             })
             labelsLayerRef.current?.addLayer(labelMarker)

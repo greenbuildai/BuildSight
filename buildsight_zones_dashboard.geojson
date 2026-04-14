@@ -1,0 +1,957 @@
+{
+  "type": "FeatureCollection",
+  "name": "BuildSight GeoAI Zone Layer",
+  "crs": {
+    "type": "name",
+    "properties": {
+      "name": "EPSG:4326"
+    }
+  },
+  "metadata": {
+    "project": "BuildSight GeoAI",
+    "site": "Maran Constructions G+1 Residential",
+    "location": "Thanjavur, Tamil Nadu — Srinivasa Nagar North",
+    "sw_corner": "10.81658333°N, 78.66883333°E",
+    "site_width_m": 18.9,
+    "site_depth_m": 9.75,
+    "building_height_m": 6.096,
+    "camera_height_m": 7.62,
+    "camera_side": "North (neighbour building), looking SOUTH",
+    "coordinate_system": "EPSG:4326 — WGS84 [lon, lat, elevation_m]",
+    "compliance": [
+      "BOCW Act 1996",
+      "NBC 2016",
+      "IS 4130",
+      "IS 3521",
+      "IS 3696"
+    ],
+    "company": "Green Build AI",
+    "igbc_ap": true,
+    "version": "4.0",
+    "dashboard_version": "BuildSight GeoAI Engine v1.0",
+    "leaflet_compatible": true,
+    "style_note": "Each feature has a 'style' property with Leaflet-compatible keys",
+    "zone_render_order": [
+      "site_boundary",
+      "height_zone_low",
+      "height_zone_moderate",
+      "height_zone_high",
+      "height_zone_critical",
+      "low_risk_parking",
+      "moderate_risk_interior",
+      "high_risk_scaffolding",
+      "high_risk_staircase",
+      "camera_fov_CAM01",
+      "camera_CAM01_position",
+      "corner_SW",
+      "corner_SE",
+      "corner_NE",
+      "corner_NW"
+    ],
+    "risk_colours": {
+      "CRITICAL": "#C0392B",
+      "HIGH": "#E67E22",
+      "MODERATE": "#C0392B",
+      "LOW": "#2471A3",
+      "none": "#FFFFFF"
+    },
+    "height_zones": {
+      "LOW": "0.00–1.52m (ground level)",
+      "MODERATE": "1.52–3.05m (mid floor)",
+      "HIGH": "3.05–4.88m (upper floor)",
+      "CRITICAL": "4.88–6.10m (roof/parapet edge)"
+    },
+    "risk_formula": "Risk = 0.35×Density + 0.30×PPE + 0.20×Height + 0.15×Movement",
+    "total_features": 15,
+    "geofence_zones": [
+      "high_risk_staircase",
+      "high_risk_scaffolding",
+      "moderate_risk_interior",
+      "low_risk_parking"
+    ],
+    "dashboard_integration": {
+      "leaflet_load": "L.geoJSON(data, {style: f=>f.properties.style})",
+      "ws_endpoint": "ws://localhost:8765",
+      "api_zones": "GET /api/geoai/zones",
+      "api_alerts": "POST /api/geoai/alerts"
+    },
+    "shifted_at": "2026-04-14T08:27:11.014Z"
+  },
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "zone_id": "site_boundary",
+        "display_name": "SITE BOUNDARY",
+        "risk": "none",
+        "alert": false,
+        "alert_level": "",
+        "description": "SITE BOUNDARY",
+        "z_base_m": 0,
+        "z_top_m": 6.096,
+        "height_m": 6.096,
+        "bocw_clause": "BOCW §2 — Site boundary",
+        "nbc_clause": "NBC 2016 Part 7 §3.1",
+        "style": {
+          "color": "#FFFFFF",
+          "weight": 2,
+          "dashArray": "8,6",
+          "fillColor": "#FFFFFF",
+          "fillOpacity": 0.04,
+          "opacity": 0.85
+        },
+        "label": "SITE BOUNDARY",
+        "label_color": "#FFFFFF",
+        "label_size": 11,
+        "show_label": true,
+        "geofence": true,
+        "geofence_type": "OUTER_BOUNDARY",
+        "outside_action": "IGNORE_DETECTION",
+        "tooltip": "Detections outside this boundary are ignored — no alert"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              78.668703035,
+              10.816592680000001,
+              0
+            ],
+            [
+              78.66893076499998,
+              10.816592680000001,
+              0
+            ],
+            [
+              78.66893076499998,
+              10.81673512,
+              0
+            ],
+            [
+              78.668703035,
+              10.81673512,
+              0
+            ],
+            [
+              78.668703035,
+              10.816592680000001,
+              0
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "zone_id": "high_risk_scaffolding",
+        "display_name": "HIGH RISK SCAFFOLDING",
+        "risk": "HIGH",
+        "alert": true,
+        "alert_level": "CRITICAL",
+        "description": "HIGH RISK SCAFFOLDING",
+        "z_base_m": 0,
+        "z_top_m": 6.096,
+        "height_m": 6.096,
+        "bocw_clause": "BOCW §40 — Scaffolding safety; BOCW §36 — Fall protection",
+        "nbc_clause": "NBC 2016 Part 7 §8.2",
+        "style": {
+          "color": "#E67E22",
+          "weight": 2.5,
+          "dashArray": null,
+          "fillColor": "#E67E22",
+          "fillOpacity": 0.28,
+          "opacity": 1,
+          "pulsing": true
+        },
+        "label": "HIGH RISK SCAFFOLDING",
+        "label_color": "#E67E22",
+        "label_size": 11,
+        "show_label": true,
+        "geofence": true,
+        "geofence_type": "HIGH_RISK_PERIMETER",
+        "density_trigger_workers_per_m2": 0.3,
+        "ppe_trigger_pct": 0.3,
+        "alert_message": "GEOFENCE: Worker in scaffolding perimeter",
+        "tooltip": "2m outside to 1m inside walls — scaffolding band"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              78.66871218499999,
+              10.81660172,
+              0
+            ],
+            [
+              78.66892161499999,
+              10.81660172,
+              0
+            ],
+            [
+              78.66892161499999,
+              10.81672607,
+              0
+            ],
+            [
+              78.66871218499999,
+              10.81672607,
+              0
+            ],
+            [
+              78.66871218499999,
+              10.81660172,
+              0
+            ]
+          ],
+          [
+            [
+              78.66873962499999,
+              10.81662885,
+              0
+            ],
+            [
+              78.66889418499998,
+              10.81662885,
+              0
+            ],
+            [
+              78.66889418499998,
+              10.81669894,
+              0
+            ],
+            [
+              78.66873962499999,
+              10.81669894,
+              0
+            ],
+            [
+              78.66873962499999,
+              10.81662885,
+              0
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "zone_id": "high_risk_staircase",
+        "display_name": "CRITICAL STAIRCASE",
+        "risk": "CRITICAL",
+        "alert": true,
+        "alert_level": "CRITICAL",
+        "description": "CRITICAL STAIRCASE",
+        "z_base_m": 0,
+        "z_top_m": 6.096,
+        "height_m": 6.096,
+        "bocw_clause": "BOCW §40 — Staircase fall protection; BOCW §41 — Ladder safety",
+        "nbc_clause": "NBC 2016 Part 7 §8.3",
+        "style": {
+          "color": "#C0392B",
+          "weight": 2.5,
+          "dashArray": null,
+          "fillColor": "#C0392B",
+          "fillOpacity": 0.55,
+          "opacity": 1,
+          "pulsing": true
+        },
+        "label": "CRITICAL STAIRCASE",
+        "label_color": "#C0392B",
+        "label_size": 11,
+        "show_label": true,
+        "geofence": true,
+        "geofence_type": "RESTRICTED_ENTRY",
+        "density_trigger_workers_per_m2": 0.1,
+        "ppe_trigger_pct": 0,
+        "alert_message": "GEOFENCE: RESTRICTED_ENTRY — Worker in high risk staircase",
+        "tooltip": "Staircase UP zone — fall risk entire height"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              78.66873047499999,
+              10.81668719,
+              0
+            ],
+            [
+              78.668775105,
+              10.81668719,
+              0
+            ],
+            [
+              78.668775105,
+              10.816707990000001,
+              0
+            ],
+            [
+              78.66873047499999,
+              10.816707990000001,
+              0
+            ],
+            [
+              78.66873047499999,
+              10.81668719,
+              0
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "zone_id": "moderate_risk_interior",
+        "display_name": "MODERATE RISK INTERIOR",
+        "risk": "MODERATE",
+        "alert": true,
+        "alert_level": "WARNING",
+        "description": "MODERATE RISK INTERIOR",
+        "z_base_m": 0,
+        "z_top_m": 4.877,
+        "height_m": 4.877,
+        "bocw_clause": "BOCW §25 — Safe working conditions; BOCW §38 — PPE mandatory",
+        "nbc_clause": "NBC 2016 Part 7 §4.1",
+        "style": {
+          "color": "#C0392B",
+          "weight": 2,
+          "dashArray": null,
+          "fillColor": "#C0392B",
+          "fillOpacity": 0.35,
+          "opacity": 1
+        },
+        "label": "MODERATE RISK INTERIOR",
+        "label_color": "#C0392B",
+        "label_size": 11,
+        "show_label": true,
+        "geofence": true,
+        "geofence_type": "ACTIVE_WORK_ZONE",
+        "density_trigger_workers_per_m2": 0.5,
+        "ppe_trigger_pct": 0.3,
+        "alert_message": "GEOFENCE: PPE violation in interior work zone",
+        "tooltip": "Active masonry, formwork, reinforcement"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              78.66873962499999,
+              10.81662885,
+              0
+            ],
+            [
+              78.66887369499999,
+              10.81662885,
+              0
+            ],
+            [
+              78.66887369499999,
+              10.81669894,
+              0
+            ],
+            [
+              78.66873962499999,
+              10.81669894,
+              0
+            ],
+            [
+              78.66873962499999,
+              10.81662885,
+              0
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "zone_id": "low_risk_parking",
+        "display_name": "LOW RISK PARKING",
+        "risk": "LOW",
+        "alert": true,
+        "alert_level": "ADVISORY",
+        "description": "LOW RISK PARKING",
+        "z_base_m": 0,
+        "z_top_m": 6.096,
+        "height_m": 6.096,
+        "bocw_clause": "BOCW §25 — General site safety",
+        "nbc_clause": "NBC 2016 Part 7 §2.1",
+        "style": {
+          "color": "#2471A3",
+          "weight": 2,
+          "dashArray": null,
+          "fillColor": "#2471A3",
+          "fillOpacity": 0.3,
+          "opacity": 1
+        },
+        "label": "LOW RISK PARKING",
+        "label_color": "#2471A3",
+        "label_size": 11,
+        "show_label": true,
+        "geofence": true,
+        "geofence_type": "SUPPORT_ZONE",
+        "density_trigger_workers_per_m2": 0.8,
+        "ppe_trigger_pct": 0.5,
+        "alert_message": "GEOFENCE: Density exceeded in parking zone",
+        "tooltip": "Car parking and site support area — 9'×32'"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              78.66887826499999,
+              10.81661981,
+              0
+            ],
+            [
+              78.66890332499999,
+              10.81661981,
+              0
+            ],
+            [
+              78.66890332499999,
+              10.816707990000001,
+              0
+            ],
+            [
+              78.66887826499999,
+              10.816707990000001,
+              0
+            ],
+            [
+              78.66887826499999,
+              10.81661981,
+              0
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "zone_id": "height_zone_low",
+        "display_name": "LOW HEIGHT ZONE",
+        "risk": "LOW",
+        "alert": true,
+        "alert_level": "ADVISORY",
+        "description": "LOW HEIGHT ZONE",
+        "z_base_m": 0,
+        "z_top_m": 1.524,
+        "height_m": 1.524,
+        "bocw_clause": "BOCW §25",
+        "nbc_clause": "NBC 2016 Pt7",
+        "style": {
+          "color": "#1E8449",
+          "weight": 1,
+          "dashArray": "4,3",
+          "fillColor": "#27AE60",
+          "fillOpacity": 0.1,
+          "opacity": 0.7
+        },
+        "label": "LOW HEIGHT ZONE",
+        "label_color": "#1E8449",
+        "label_size": 11,
+        "show_label": true,
+        "elevation_range": "0.00–1.52m",
+        "height_zone": true
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              78.66873047499999,
+              10.81661981,
+              0
+            ],
+            [
+              78.66890332499999,
+              10.81661981,
+              0
+            ],
+            [
+              78.66890332499999,
+              10.816707990000001,
+              0
+            ],
+            [
+              78.66873047499999,
+              10.816707990000001,
+              0
+            ],
+            [
+              78.66873047499999,
+              10.81661981,
+              0
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "zone_id": "height_zone_moderate",
+        "display_name": "MODERATE HEIGHT ZONE",
+        "risk": "MODERATE",
+        "alert": true,
+        "alert_level": "WARNING",
+        "description": "MODERATE HEIGHT ZONE",
+        "z_base_m": 1.524,
+        "z_top_m": 3.05,
+        "height_m": 1.526,
+        "bocw_clause": "BOCW §38",
+        "nbc_clause": "NBC 2016 Pt7 §4.1",
+        "style": {
+          "color": "#B7950B",
+          "weight": 1,
+          "dashArray": "4,3",
+          "fillColor": "#D4AC0D",
+          "fillOpacity": 0.12,
+          "opacity": 0.7
+        },
+        "label": "MODERATE HEIGHT ZONE",
+        "label_color": "#B7950B",
+        "label_size": 11,
+        "show_label": true,
+        "elevation_range": "1.52–3.05m",
+        "height_zone": true
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              78.66873047499999,
+              10.81661981,
+              1.524
+            ],
+            [
+              78.66890332499999,
+              10.81661981,
+              1.524
+            ],
+            [
+              78.66890332499999,
+              10.816707990000001,
+              1.524
+            ],
+            [
+              78.66873047499999,
+              10.816707990000001,
+              1.524
+            ],
+            [
+              78.66873047499999,
+              10.81661981,
+              1.524
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "zone_id": "height_zone_high",
+        "display_name": "HIGH HEIGHT ZONE",
+        "risk": "HIGH",
+        "alert": true,
+        "alert_level": "CRITICAL",
+        "description": "HIGH HEIGHT ZONE",
+        "z_base_m": 3.05,
+        "z_top_m": 4.877,
+        "height_m": 1.827,
+        "bocw_clause": "BOCW §40",
+        "nbc_clause": "NBC 2016 Pt7 §8.2",
+        "style": {
+          "color": "#CA6F1E",
+          "weight": 1.5,
+          "dashArray": "4,3",
+          "fillColor": "#E67E22",
+          "fillOpacity": 0.15,
+          "opacity": 0.8
+        },
+        "label": "HIGH HEIGHT ZONE",
+        "label_color": "#CA6F1E",
+        "label_size": 11,
+        "show_label": true,
+        "elevation_range": "3.05–4.88m",
+        "height_zone": true
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              78.66873047499999,
+              10.81661981,
+              3.05
+            ],
+            [
+              78.66890332499999,
+              10.81661981,
+              3.05
+            ],
+            [
+              78.66890332499999,
+              10.816707990000001,
+              3.05
+            ],
+            [
+              78.66873047499999,
+              10.816707990000001,
+              3.05
+            ],
+            [
+              78.66873047499999,
+              10.81661981,
+              3.05
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "zone_id": "height_zone_critical",
+        "display_name": "CRITICAL HEIGHT ZONE",
+        "risk": "CRITICAL",
+        "alert": true,
+        "alert_level": "CRITICAL",
+        "description": "CRITICAL HEIGHT ZONE",
+        "z_base_m": 4.877,
+        "z_top_m": 6.096,
+        "height_m": 1.219,
+        "bocw_clause": "BOCW §40 — Safety harness mandatory",
+        "nbc_clause": "NBC 2016 Pt7 §8.4",
+        "style": {
+          "color": "#922B21",
+          "weight": 1.5,
+          "dashArray": "4,3",
+          "fillColor": "#C0392B",
+          "fillOpacity": 0.18,
+          "opacity": 0.8
+        },
+        "label": "CRITICAL HEIGHT ZONE",
+        "label_color": "#922B21",
+        "label_size": 11,
+        "show_label": true,
+        "elevation_range": "4.88–6.10m",
+        "height_zone": true,
+        "cctv_evidence": "Worker at this level 2025-12-29 17:05"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              78.66873047499999,
+              10.81661981,
+              4.877
+            ],
+            [
+              78.66890332499999,
+              10.81661981,
+              4.877
+            ],
+            [
+              78.66890332499999,
+              10.816707990000001,
+              4.877
+            ],
+            [
+              78.66873047499999,
+              10.816707990000001,
+              4.877
+            ],
+            [
+              78.66873047499999,
+              10.81661981,
+              4.877
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "zone_id": "camera_fov_CAM01",
+        "display_name": "CAM-01 FIELD OF VIEW",
+        "risk": "none",
+        "alert": false,
+        "alert_level": "",
+        "camera_id": "CAM-01",
+        "type": "camera_coverage",
+        "camera_height_m": 7.62,
+        "camera_height_ft": 25,
+        "host_building": "Neighbour building (north side)",
+        "direction": "Looking SOUTH into construction site",
+        "calibration_file": "camera_cam01_H.npy",
+        "rtsp_url": "rtsp://camera_ip:554/stream",
+        "show_label": true,
+        "label": "CAM-01 COVERAGE",
+        "z_base_m": 0,
+        "z_top_m": 7.62,
+        "height_m": 7.62,
+        "bocw_clause": "",
+        "nbc_clause": "",
+        "style": {
+          "color": "#1D9E75",
+          "weight": 1.5,
+          "dashArray": "6,4",
+          "fillColor": "#1D9E75",
+          "fillOpacity": 0.06,
+          "opacity": 0.7
+        }
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              78.66881690499999,
+              10.816780340000001,
+              7.62
+            ],
+            [
+              78.66871218499999,
+              10.81661981,
+              0
+            ],
+            [
+              78.66871218499999,
+              10.81672607,
+              0
+            ],
+            [
+              78.66892161499999,
+              10.81672607,
+              0
+            ],
+            [
+              78.66892161499999,
+              10.81661981,
+              0
+            ],
+            [
+              78.66881690499999,
+              10.816780340000001,
+              7.62
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "zone_id": "camera_CAM01_position",
+        "display_name": "CAM-01",
+        "risk": "none",
+        "alert": false,
+        "alert_level": "",
+        "type": "camera",
+        "camera_id": "CAM-01",
+        "camera_height_m": 7.62,
+        "camera_height_ft": 25,
+        "building_height_m": 6.096,
+        "elevation_advantage_m": 1.524,
+        "host_building": "Neighbour building (north)",
+        "direction": "Looking SOUTH",
+        "icon": "camera",
+        "icon_color": "#2471A3",
+        "icon_size": 22,
+        "show_label": true,
+        "label": "CAM-01  25ft",
+        "z_base_m": 0,
+        "z_top_m": 7.62,
+        "height_m": 7.62,
+        "bocw_clause": "",
+        "nbc_clause": "",
+        "style": {
+          "color": "#2471A3",
+          "weight": 3,
+          "fillColor": "#2471A3",
+          "fillOpacity": 0.95,
+          "radius": 10
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          78.66881690499999,
+          10.816780340000001,
+          7.62
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "zone_id": "corner_SW",
+        "display_name": "CORNER SW",
+        "type": "building_corner",
+        "corner": "SW",
+        "description": "Kitchen / GPS reference",
+        "world_x_m": 0,
+        "world_y_m": 0,
+        "lat": 10.81658333,
+        "lon": 78.66883333,
+        "risk": "none",
+        "alert": false,
+        "alert_level": "",
+        "show_label": true,
+        "label": "SW",
+        "z_base_m": 0,
+        "z_top_m": 6.096,
+        "height_m": 6.096,
+        "bocw_clause": "",
+        "nbc_clause": "",
+        "style": {
+          "color": "#E74C3C",
+          "weight": 2,
+          "fillColor": "#E74C3C",
+          "fillOpacity": 0.9,
+          "radius": 6
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          78.66873047499999,
+          10.81661981,
+          0
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "zone_id": "corner_SE",
+        "display_name": "CORNER SE",
+        "type": "building_corner",
+        "corner": "SE",
+        "description": "Car parking east",
+        "world_x_m": 18.9,
+        "world_y_m": 0,
+        "lat": 10.81658333,
+        "lon": 78.66900618,
+        "risk": "none",
+        "alert": false,
+        "alert_level": "",
+        "show_label": true,
+        "label": "SE",
+        "z_base_m": 0,
+        "z_top_m": 6.096,
+        "height_m": 6.096,
+        "bocw_clause": "",
+        "nbc_clause": "",
+        "style": {
+          "color": "#E74C3C",
+          "weight": 2,
+          "fillColor": "#E74C3C",
+          "fillOpacity": 0.9,
+          "radius": 6
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          78.66890332499999,
+          10.81661981,
+          0
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "zone_id": "corner_NE",
+        "display_name": "CORNER NE",
+        "type": "building_corner",
+        "corner": "NE",
+        "description": "Common toilet NE",
+        "world_x_m": 18.9,
+        "world_y_m": 9.75,
+        "lat": 10.81667151,
+        "lon": 78.66900618,
+        "risk": "none",
+        "alert": false,
+        "alert_level": "",
+        "show_label": true,
+        "label": "NE",
+        "z_base_m": 0,
+        "z_top_m": 6.096,
+        "height_m": 6.096,
+        "bocw_clause": "",
+        "nbc_clause": "",
+        "style": {
+          "color": "#E74C3C",
+          "weight": 2,
+          "fillColor": "#E74C3C",
+          "fillOpacity": 0.9,
+          "radius": 6
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          78.66890332499999,
+          10.816707990000001,
+          0
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "zone_id": "corner_NW",
+        "display_name": "CORNER NW",
+        "type": "building_corner",
+        "corner": "NW",
+        "description": "Staircase NW",
+        "world_x_m": 0,
+        "world_y_m": 9.75,
+        "lat": 10.81667151,
+        "lon": 78.66883333,
+        "risk": "none",
+        "alert": false,
+        "alert_level": "",
+        "show_label": true,
+        "label": "NW",
+        "z_base_m": 0,
+        "z_top_m": 6.096,
+        "height_m": 6.096,
+        "bocw_clause": "",
+        "nbc_clause": "",
+        "style": {
+          "color": "#E74C3C",
+          "weight": 2,
+          "fillColor": "#E74C3C",
+          "fillOpacity": 0.9,
+          "radius": 6
+        }
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          78.66873047499999,
+          10.816707990000001,
+          0
+        ]
+      }
+    }
+  ]
+}
