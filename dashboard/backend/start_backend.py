@@ -38,7 +38,26 @@ SERVICES = {
         "name": "GeoAI WebSocket Server",
         "port": 8765,
         "cmd": [sys.executable, str(BACKEND_DIR / "geoai_ws_server.py")],
-        "health_url": None,  # WebSocket --- no HTTP health check
+        "health_url": None,
+    },
+    "heatmap": {
+        "name": "GeoAI Heatmap Engine",
+        "port": None,
+        "cmd": [sys.executable, str(BACKEND_DIR / "heatmap_engine.py")],
+        "health_url": None,
+    },
+    "pipeline": {
+        "name": "GeoAI Detection Pipeline",
+        "port": None,  # Processing service, no port
+        "cmd": [
+            sys.executable, 
+            str(PROJECT_ROOT / "geoai_pipeline.py"),
+            "--source", r"E:\Company\Green Build AI\Prototypes\BuildSight\buildsight-base\gis\inputs\rd4.mp4",
+            "--db",
+            "--ws",
+            "--model-mode", "ensemble"
+        ],
+        "health_url": None,
     },
 }
 
@@ -75,10 +94,13 @@ def launch_service(key: str) -> subprocess.Popen:
     name = svc["name"]
     port = svc["port"]
     
-    if check_port(port):
+    if port and check_port(port):
         print(f"  {YELLOW}--- Port {port} in use --- {name} may already be running{RESET}")
     
-    print(f"  {GREEN}--- Launching {name} on port {port}...{RESET}")
+    if port:
+        print(f"  {GREEN}--- Launching {name} on port {port}...{RESET}")
+    else:
+        print(f"  {GREEN}--- Launching {name} (Background Service)...{RESET}")
     
     env = os.environ.copy()
     env["PYTHONUNBUFFERED"] = "1"
@@ -108,7 +130,8 @@ def main():
     elif args.ws:
         to_launch = ["ws"]
     else:
-        to_launch = ["api", "ws"]
+        # User specified order: 1. FastAPI, 2. WS, 3. Heatmap, 4. Pipeline
+        to_launch = ["api", "ws", "heatmap", "pipeline"]
     
     procs = {}
     
@@ -141,7 +164,8 @@ def main():
 """)
     for key in to_launch:
         svc = SERVICES[key]
-        print(f"    {GREEN}---{RESET} {svc['name']:30s} --- port {svc['port']}")
+        port_info = f"--- port {svc['port']}" if svc['port'] else "--- [Processing Service]"
+        print(f"    {GREEN}---{RESET} {svc['name']:30s} {port_info}")
     
     print(f"""
   {CYAN}Press Ctrl+C to stop all services

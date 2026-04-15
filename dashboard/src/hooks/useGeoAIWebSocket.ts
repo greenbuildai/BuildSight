@@ -8,7 +8,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import type {
   HeatmapUpdatePayload, WorkerPosition, RiskCell, GeoAIAlert,
   SpatialEvent, WorkerTrail, KPISummary, BackendHealth,
-  AlertStateType,
+  AlertStateType, SpatialNarrationPayload, GeoAIPayload
 } from '../types/geoai'
 
 const WS_URL = 'ws://localhost:8765'
@@ -23,6 +23,7 @@ type ConnectionState = 'connecting' | 'live' | 'demo' | 'disconnected'
 
 interface GeoAIState {
   data: HeatmapUpdatePayload | null
+  narration: SpatialNarrationPayload | null
   connectionState: ConnectionState
   isLive: boolean
   isDemoMode: boolean
@@ -248,6 +249,7 @@ function generateDemoTick(cycle: number): HeatmapUpdatePayload {
 
 export function useGeoAIWebSocket(): GeoAIState {
   const [data, setData] = useState<HeatmapUpdatePayload | null>(null)
+  const [narration, setNarration] = useState<SpatialNarrationPayload | null>(null)
   const [connectionState, setConnectionState] = useState<ConnectionState>('connecting')
   const cycleRef = useRef(0)
   const wsRef = useRef<WebSocket | null>(null)
@@ -312,10 +314,12 @@ export function useGeoAIWebSocket(): GeoAIState {
 
         ws.onmessage = (event) => {
           try {
-            const payload = JSON.parse(event.data) as HeatmapUpdatePayload
+            const payload = JSON.parse(event.data) as GeoAIPayload
             if (payload.type === 'heatmap_update') {
               cycleRef.current = payload.cycle
               setData(payload)
+            } else if (payload.type === 'spatial_narration') {
+              setNarration(payload)
             }
           } catch {
             // Ignore malformed messages
@@ -359,6 +363,7 @@ export function useGeoAIWebSocket(): GeoAIState {
 
   return {
     data,
+    narration,
     connectionState,
     isLive: connectionState === 'live',
     isDemoMode: connectionState === 'demo',

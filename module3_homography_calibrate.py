@@ -18,12 +18,13 @@ USAGE:
 import cv2, numpy as np, argparse, json, os
 from datetime import datetime
 
-# Real-world corner coordinates (meters from SW corner)
+# Real-world corner coordinates (meters from origin)
+# Refined for Camera Perspective: Depth axis is Click 1->2. Width axis is Click 2->3.
 WORLD_POINTS = {
-    "SW": (0.00,  0.00),
-    "SE": (18.90, 0.00),
-    "NE": (18.90, 9.75),
-    "NW": (0.00,  9.75),
+    "SW": (0.00,  0.00),    # Staircase Area (Point 1: Foreground Right)
+    "SE": (0.00,  9.75),    # Kitchen Area (Point 2: Background Right)
+    "NE": (18.90, 9.75),    # Hall Area (Point 3: Background Left)
+    "NW": (18.90, 0.00),    # Toilet Area (Point 4: Foreground Left)
 }
 POINT_COLORS = {
     "SW": (0,255,0), "SE": (255,165,0),
@@ -139,10 +140,10 @@ class HomographyCalibrator:
             ("BuildSight — Homography Cal",(255,255,255)),
             ("",(0,0,0)),
             ("Click IN ORDER:",(200,200,200)),
-            ("1. SW — bottom-left (Kitchen)",POINT_COLORS["SW"]),
-            ("2. SE — bottom-right (Parking)",POINT_COLORS["SE"]),
-            ("3. NE — top-right (Toilet)",POINT_COLORS["NE"]),
-            ("4. NW — top-left (Staircase)",POINT_COLORS["NW"]),
+            ("1. SW — Staircase Area",POINT_COLORS["SW"]),
+            ("2. SE — Kitchen Area",POINT_COLORS["SE"]),
+            ("3. NE — Hall Area",POINT_COLORS["NE"]),
+            ("4. NW — Toilet Area",POINT_COLORS["NW"]),
             ("",(0,0,0)),
             ("S=Save  R=Reset  ESC=Quit",(180,255,180)),
         ]:

@@ -65,7 +65,7 @@ function AnimatedCounter({ value }: { value: number | string }) {
 }
 
 export function GeoAIPage() {
-  const { data, connectionState, cycle, acknowledgeEvent, resolveEvent } = useGeoAIWebSocket()
+  const { data, narration, connectionState, cycle, acknowledgeEvent, resolveEvent } = useGeoAIWebSocket()
 
   const [dynamicZones, setDynamicZones] = useState<DynamicZone[]>([])
 
@@ -115,7 +115,7 @@ export function GeoAIPage() {
 
 
   const activeStatusLabel = useMemo(() => {
-    if (visualMode === 'tactical') return 'Tactical 2D Active'
+    if (visualMode === 'tactical') return 'Tactical Overview Active'
     if (visualMode === 'satellite') return 'Satellite Hybrid Active'
     if (visualMode === 'plan2d') return '2D Plan Active'
     return '3D View Active'
@@ -265,6 +265,7 @@ export function GeoAIPage() {
                       heatmapOpacity={heatmapOpacity}
                       viewMode={visualMode}
                       dynamicZones={dynamicZones}
+                      narration={narration}
                     />
                   </motion.div>
                 )}

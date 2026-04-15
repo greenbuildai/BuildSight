@@ -1,0 +1,15 @@
+{
+  "architectures": [
+    "Moondream"
+  ],
+  "auto_map": {
+    "AutoConfig": "configuration_moondream.MoondreamConfig",
+    "AutoModelForCausalLM": "moondream.Moondream"
+  },
+  "model_type": "moondream1",
+  "phi_config": {
+    "model_type": "phi"
+  },
+  "torch_dtype": "float16",
+  "transformers_version": "4.38.2"
+}

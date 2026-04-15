@@ -14,11 +14,17 @@ log = logging.getLogger("BuildSight.SpatialData")
 # ── Site configuration (Canonical source) ──────────────────────────────────
 SITE_CONFIG = {
     "site_id": "CH-SITE-01-TIRUCHIRAPPALLI",
-    "sw_lat": 10.81658333,
-    "sw_lon": 78.66873333,
+    "anchors": {
+        "SW_STAIRCASE": [10.816539, 78.668835], # User defined origin
+        "SE_KITCHEN":   [10.816714, 78.66842],
+        "NE_HALL":      [10.816715, 78.668946],
+        "NW_TOILET":    [10.816527, 78.668945],
+    },
+    "sw_lat": 10.816539,
+    "sw_lon": 78.668835,
     "width_m": 18.90,  # X-axis (Local)
     "depth_m": 9.75,   # Y-axis (Local)
-    "rotation_deg": 85.0,  # Site rotation relative to true North
+    "rotation_deg": -113.0, # Adjusted for new origin
     "centre": [10.81662, 78.66891],
     "utm_zone": 44,
     "utm_band": "N",

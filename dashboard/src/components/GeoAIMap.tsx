@@ -1,10 +1,12 @@
+import L from 'leaflet'
+import 'leaflet/dist/leaflet.css'
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
-import type { HeatmapUpdatePayload, ZoneCollection, ZoneFeature, DynamicZone } from '../types/geoai'
+import type { HeatmapUpdatePayload, ZoneCollection, ZoneFeature, DynamicZone, SpatialNarrationPayload } from '../types/geoai'
 
 const SITE_CENTER: [number, number] = [10.81662, 78.66891]
 const INITIAL_ZOOM = 19
 const TARGET_OVERLAY_ROTATION_DEG = 85
-const OVERLAY_OFFSET_METERS: [number, number] = [8.5, -4.5]
+const OVERLAY_OFFSET_METERS: [number, number] = [7.5, -4.5]
 const OVERLAY_SCALE = 0.72
 
 const RISK_COLORS: Record<string, string> = {
@@ -33,6 +35,7 @@ interface GeoAIMapProps {
   heatmapOpacity?: number
   viewMode: string
   dynamicZones?: DynamicZone[]
+  narration?: SpatialNarrationPayload | null
 }
 
 interface OverlayMetadata {
@@ -136,6 +139,7 @@ export function GeoAIMap({
   heatmapOpacity = 0.65,
   viewMode,
   dynamicZones = [],
+  narration = null,
 }: GeoAIMapProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<any>(null)
@@ -158,11 +162,10 @@ export function GeoAIMap({
   const [mapReady, setMapReady] = useState(false)
   const [geoData, setGeoData] = useState<ZoneCollection | null>(null)
   const lastValidZonesRef = useRef<ZoneCollection | null>(null)
-  const [fetchError, setFetchError] = useState<string | null>(null)
+  const [mapError, setMapError] = useState<string | null>(null)
   const [samSegments, setSamSegments] = useState<any[]>([])
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [mapMode, setMapMode] = useState<'segment' | 'expert'>('segment')
-  const [vlmAnalyses, setVlmAnalyses] = useState<any[]>([])
 
   const TACTICAL_URL = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
   const SATELLITE_URL = 'https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}'
@@ -221,7 +224,7 @@ export function GeoAIMap({
         console.log('GeoAI: Successfully loaded zones from static GeoJSON')
         setGeoData(data)
         lastValidZonesRef.current = data
-        setFetchError(null)
+        setMapError(null)
       } catch (err) {
         console.warn('GeoAI: Static GeoJSON failed, falling back to API', err)
 
@@ -234,7 +237,7 @@ export function GeoAIMap({
           console.log('GeoAI: Successfully loaded zones from Backend API')
           setGeoData(apiData)
           lastValidZonesRef.current = apiData
-          setFetchError(null)
+          setMapError(null)
         } catch (apiErr) {
           console.error('GeoAI: Failed to load zones from all sources', apiErr)
 
@@ -243,7 +246,7 @@ export function GeoAIMap({
             console.log('GeoAI: Reusing last valid zone data from memory')
             setGeoData(lastValidZonesRef.current)
           } else {
-            setFetchError('Critical: Zoning data unavailable')
+            setMapError('Critical: Zoning data unavailable')
           }
         }
       }
@@ -324,7 +327,15 @@ export function GeoAIMap({
     mapRef.current = map
     setMapReady(true)
 
+    const resizeObserver = new ResizeObserver(() => {
+      if (map) {
+        map.invalidateSize()
+      }
+    })
+    resizeObserver.observe(containerRef.current)
+
     return () => {
+      resizeObserver.disconnect()
       map.remove()
       mapRef.current = null
       setMapReady(false)
@@ -409,6 +420,29 @@ export function GeoAIMap({
     }
   }, [mapMode, isAnalyzing, overlayCenter, overlayRotationDelta])
 
+  // Automated Narration Listener
+  useEffect(() => {
+    if (!narration) return
+
+    setAnalysisHistory(prev => {
+      // Check if this narration is already in history (by timestamp)
+      const exists = prev.some(item => Math.abs(item.raw_timestamp - narration.timestamp) < 0.1)
+      if (exists) return prev
+
+      return [{
+        timestamp: new Date(narration.timestamp * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        raw_timestamp: narration.timestamp,
+        result: narration.text,
+        type: 'automated',
+        vlm_active: narration.vlm_active,
+        coords: [0, 0] // Default coords for automated narration to prevent UI crash
+      }, ...prev].slice(0, 50) // Keep last 50
+    })
+
+    // Optionally auto-show history for important background updates
+    // setShowHistory(true)
+  }, [narration])
+
   useEffect(() => {
     if (!mapRef.current || !tacticalTileRef.current || !satelliteTileRef.current) return
 
@@ -444,7 +478,6 @@ export function GeoAIMap({
 
     if (!showZones && !showLabels && !showCameraFOV) return
 
-    const baseZoneFillOpacity = mapMode === 'expert' ? 0.60 : 0.90
     const labelOpacity = 1.0
 
     const features: ZoneFeature[] = geoData.features || (geoData as any).zones?.map((z: any) => ({
@@ -502,7 +535,8 @@ export function GeoAIMap({
           if (showLabels) {
             const bounds = zonePoly.getBounds()
             const center = bounds.getCenter()
-            const labelText = (props.display_name || props.zone || props.zone_id || '').replace(/_/g, ' ').toUpperCase()
+            const rawLabel = (props.display_name || props.zone || props.zone_id || '') as string
+            const labelText = rawLabel.replace(/_/g, ' ').toUpperCase()
             
             const labelMarker = L.marker([center.lat, center.lng], {
               icon: L.divIcon({
@@ -709,167 +743,250 @@ export function GeoAIMap({
         </div>
       `, { className: 'geoai-popup-container' })
 
-      samLayerRef.current.addLayer(poly)
+      samLayerRef.current?.addLayer(poly)
     })
   }, [samSegments, normalizeLngLat])
 
   return (
-    <div className="geoai-shell" style={{ height: '100%' }}>
-      {/* Precision Coordinate HUD */}
-      <div className="geoai-hud-card geoai-glass geoai-hud-layer">
-        <div className="geoai-hud-header">
-          <div className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" style={{ boxShadow: 'var(--geoai-glow)' }} />
-          <span className="geoai-hud-label geoai-glow-text">Spatial Logic Active</span>
+    <div className="geoai-shell" style={{ height: '100%', position: 'relative' }}>
+
+      {/* ── BASE LAYER: Map fills entire shell ─────────────────────── */}
+      <div ref={containerRef} className="geoai-map-container" />
+
+      {mapError && (
+        <div style={{
+          position: 'absolute',
+          top: '20px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          zIndex: 2000,
+          background: 'rgba(255, 0, 0, 0.2)',
+          backdropFilter: 'blur(10px)',
+          border: '1px solid rgba(255, 0, 0, 0.5)',
+          padding: '8px 16px',
+          borderRadius: '4px',
+          color: '#ff4444',
+          fontSize: '12px',
+          fontFamily: 'monospace',
+          textTransform: 'uppercase',
+          letterSpacing: '1px'
+        }}>
+          [ TACTICAL ERROR ]: {mapError}
+        </div>
+      )}
+
+      {/* ── OVERLAY LAYER: All HUD elements on top of the map ──────── */}
+      <div className="geoai-map-overlays">
+
+        {/* Compact Tactical Compass HUD */}
+        <div className="geoai-compass-hud geoai-glass geoai-hud-layer" style={{
+          position: 'absolute',
+          top: '18px',
+          right: '18px',
+          width: '72px',
+          height: '72px',
+          zIndex: 1200,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          borderRadius: '12px',
+          pointerEvents: 'auto'
+        }}>
+          {/* Central Crosshair */}
+          <div style={{ position: 'absolute', width: '24px', height: '1px', background: 'var(--color-accent)', opacity: 0.6 }} />
+          <div style={{ position: 'absolute', width: '1px', height: '24px', background: 'var(--color-accent)', opacity: 0.6 }} />
+          
+          {/* Direction Labels */}
+          <span className="geoai-hud-label" style={{ position: 'absolute', top: '4px', fontSize: '10px', fontWeight: 900, color: '#fff' }}>N</span>
+          <span className="geoai-hud-label" style={{ position: 'absolute', bottom: '4px', fontSize: '10px', fontWeight: 900, color: 'rgba(255,255,255,0.4)' }}>S</span>
+          <span className="geoai-hud-label" style={{ position: 'absolute', right: '4px', fontSize: '10px', fontWeight: 900, color: 'rgba(255,255,255,0.4)' }}>E</span>
+          <span className="geoai-hud-label" style={{ position: 'absolute', left: '4px', fontSize: '10px', fontWeight: 900, color: 'rgba(255,255,255,0.4)' }}>W</span>
+          
+          {/* Inner Glow Circle */}
+          <div style={{
+            width: '40px',
+            height: '40px',
+            border: '1px solid rgba(0, 229, 255, 0.1)',
+            borderRadius: '50%',
+            boxShadow: 'inset 0 0 10px rgba(0, 229, 255, 0.05)'
+          }} />
         </div>
 
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '24px' }}>
+        {/* Precision Coordinate HUD */}
+        <div className="geoai-hud-card geoai-glass geoai-hud-layer">
+          <div className="geoai-hud-header">
+            <div className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" style={{ boxShadow: 'var(--geoai-glow)' }} />
+            <span className="geoai-hud-label geoai-glow-text">Spatial Logic Active</span>
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: '24px' }}>
+            <div className="geoai-hud-metric">
+              <span className="geoai-hud-label">Projection</span>
+              <span className="geoai-hud-value">UTM ZONE 44N</span>
+            </div>
+            <div className="geoai-hud-metric" style={{ textAlign: 'right' }}>
+              <span className="geoai-hud-label">Precision</span>
+              <span className="geoai-hud-value" style={{ color: 'var(--color-accent)' }}>±0.008m</span>
+            </div>
+          </div>
+
+          <div style={{ height: '1px', width: '100%', background: 'rgba(255,255,255,0.05)', margin: '4px 0' }} />
+
           <div className="geoai-hud-metric">
-            <span className="geoai-hud-label">Projection</span>
-            <span className="geoai-hud-value">UTM ZONE 44N</span>
-          </div>
-          <div className="geoai-hud-metric" style={{ textAlign: 'right' }}>
-            <span className="geoai-hud-label">Precision</span>
-            <span className="geoai-hud-value" style={{ color: 'var(--color-accent)' }}>±0.008m</span>
+            <span className="geoai-hud-label">GPS Cursor</span>
+            <span className="geoai-hud-value">
+              {hoverCoords ? (
+                <>
+                  {hoverCoords[0].toFixed(6)}°N / {hoverCoords[1].toFixed(6)}°E
+                </>
+              ) : '--.------°N / --.------°E'}
+            </span>
           </div>
         </div>
 
-        <div style={{ height: '1px', width: '100%', background: 'rgba(255,255,255,0.05)', margin: '4px 0' }} />
+        {/* Mode Controls - Premium Toolbar */}
+        <div className="geoai-toolbar geoai-glass geoai-hud-layer">
+          <button
+            onClick={() => setMapMode('segment')}
+            className={`geoai-action-button ${mapMode === 'segment' ? 'geoai-action-button--active' : ''}`}
+          >
+            <svg className="geoai-tool-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z" />
+            </svg>
+            <span>Segmentation</span>
+          </button>
 
-        <div className="geoai-hud-metric">
-          <span className="geoai-hud-label">GPS Cursor</span>
-          <span className="geoai-hud-value">
-            {hoverCoords ? (
-              <>
-                {hoverCoords[0].toFixed(6)}°N / {hoverCoords[1].toFixed(6)}°E
-              </>
-            ) : '--.------°N / --.------°E'}
-          </span>
-        </div>
-      </div>
-
-      {/* Mode Controls - Premium Toggle */}
-      <div className="geoai-toolbar geoai-glass geoai-hud-layer">
-        <button
-          onClick={() => setMapMode('segment')}
-          className={`geoai-action-button ${mapMode === 'segment' ? 'geoai-action-button--active' : ''}`}
-        >
-          <svg className="geoai-tool-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z" />
-          </svg>
-          <span>Segmentation</span>
-        </button>
-
-        <button
-          onClick={() => setMapMode('expert')}
-          className={`geoai-action-button geoai-action-button--purple ${mapMode === 'expert' ? 'geoai-action-button--active' : ''}`}
-        >
-          <svg className="geoai-tool-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-          </svg>
-          <span>Spatial Expert</span>
-        </button>
-      </div>
-
-      {/* Intelligence Insights Sidebar */}
-      <div className={`geoai-sidebar geoai-glass geoai-sidebar-layer ${showHistory ? '' : 'geoai-sidebar--hidden'}`}>
-        <div className="geoai-sidebar-header">
-          <div>
-            <h3 style={{ fontSize: 'var(--fs-md)', fontWeight: 900, textTransform: 'uppercase', color: '#fff', letterSpacing: '-0.02em' }}>Insights</h3>
-            <span className="geoai-hud-label" style={{ letterSpacing: '0.3em' }}>Spatial VLM Stream</span>
-          </div>
-          <button onClick={() => setShowHistory(false)} style={{ width: '32px', height: '32px', borderRadius: '50%', background: 'rgba(255,255,255,0.05)', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.4)' }}>
-            <svg className="geoai-tool-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" /></svg>
+          <button
+            onClick={() => setMapMode('expert')}
+            className={`geoai-action-button geoai-action-button--purple ${mapMode === 'expert' ? 'geoai-action-button--active' : ''}`}
+          >
+            <svg className="geoai-tool-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+            </svg>
+            <span>Spatial Expert</span>
           </button>
         </div>
 
-        <div className="geoai-sidebar-content custom-scrollbar">
-          {analysisHistory.length === 0 ? (
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', opacity: 0.2, textAlign: 'center', padding: '40px' }}>
-              <div style={{ width: '64px', height: '64px', border: '2px dashed rgba(255,255,255,0.2)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '16px' }}>
-                <svg className="geoai-tool-icon" style={{ width: '32px', height: '32px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" strokeWidth={1.5} /></svg>
-              </div>
-              <p className="geoai-hud-label">Awaiting spatial probe data...</p>
+        {/* Intelligence Insights Sidebar */}
+        <div className={`geoai-sidebar geoai-glass geoai-sidebar-layer ${showHistory ? '' : 'geoai-sidebar--hidden'}`}>
+          <div className="geoai-sidebar-header">
+            <div>
+              <h3 style={{ fontSize: 'var(--fs-md)', fontWeight: 900, textTransform: 'uppercase', color: '#fff', letterSpacing: '-0.02em' }}>Insights</h3>
+              <span className="geoai-hud-label" style={{ letterSpacing: '0.3em' }}>Spatial VLM Stream</span>
             </div>
-          ) : (
-            analysisHistory.map((entry, idx) => (
-              <div key={idx} className="geoai-insight-card">
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <div className="w-1.5 h-1.5 rounded-full bg-purple-500" style={{ boxShadow: '0 0 10px rgba(168,85,247,0.8)' }} />
-                    <span style={{ fontSize: '11px', fontWeight: 900, color: '#a855f7', fontFamily: 'var(--font-mono)' }}>{entry.timestamp}</span>
+            <button onClick={() => setShowHistory(false)} style={{ width: '32px', height: '32px', borderRadius: '50%', background: 'rgba(255,255,255,0.05)', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.4)' }}>
+              <svg className="geoai-tool-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" /></svg>
+            </button>
+          </div>
+
+          <div className="geoai-sidebar-content custom-scrollbar">
+            {analysisHistory.length === 0 ? (
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', opacity: 0.2, textAlign: 'center', padding: '40px' }}>
+                <div style={{ width: '64px', height: '64px', border: '2px dashed rgba(255,255,255,0.2)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '16px' }}>
+                  <svg className="geoai-tool-icon" style={{ width: '32px', height: '32px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" strokeWidth={1.5} /></svg>
+                </div>
+                <p className="geoai-hud-label">Awaiting spatial probe data...</p>
+              </div>
+            ) : (
+              analysisHistory.map((entry, idx) => (
+                <div key={idx} className="geoai-insight-card">
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <div className="w-1.5 h-1.5 rounded-full bg-purple-500" style={{ boxShadow: '0 0 10px rgba(168,85,247,0.8)' }} />
+                      <span style={{ fontSize: '11px', fontWeight: 900, color: '#a855f7', fontFamily: 'var(--font-mono)' }}>{entry.timestamp}</span>
+                    </div>
+                  </div>
+                  <p style={{ fontSize: '14px', color: 'rgba(255,255,255,0.8)', lineHeight: '1.6', marginBottom: '16px' }}>{entry.result}</p>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span style={{ padding: '4px 8px', background: 'rgba(168,85,247,0.2)', color: '#a855f7', fontSize: '9px', fontWeight: 900, borderRadius: '6px', textTransform: 'uppercase', letterSpacing: '0.1em' }}>VLM Core</span>
+                    <span style={{ fontSize: '10px', color: 'rgba(255,255,255,0.2)', fontFamily: 'var(--font-mono)' }}>
+                      {entry.coords && entry.coords.length >= 2 
+                        ? `${entry.coords[0].toFixed(5)}, ${entry.coords[1].toFixed(5)}`
+                        : 'SYSTEM MONITOR'}
+                    </span>
                   </div>
                 </div>
-                <p style={{ fontSize: '14px', color: 'rgba(255,255,255,0.8)', lineHeight: '1.6', marginBottom: '16px' }}>{entry.result}</p>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <span style={{ padding: '4px 8px', background: 'rgba(168,85,247,0.2)', color: '#a855f7', fontSize: '9px', fontWeight: 900, borderRadius: '6px', textTransform: 'uppercase', letterSpacing: '0.1em' }}>VLM Core</span>
-                  <span style={{ fontSize: '10px', color: 'rgba(255,255,255,0.2)', fontFamily: 'var(--font-mono)' }}>{entry.coords[0].toFixed(5)}, {entry.coords[1].toFixed(5)}</span>
-                </div>
-              </div>
-            ))
-          )}
-        </div>
-
-        <div style={{ padding: '24px', borderTop: '1px solid var(--geoai-border)', background: 'rgba(255,255,255,0.02)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', fontWeight: 700, color: 'rgba(255,255,255,0.2)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
-            <span>Total Scans: {analysisHistory.length}</span>
-            <span style={{ color: 'var(--color-accent)', opacity: 0.5 }}>V1.2.4-PRO</span>
-          </div>
-        </div>
-      </div>
-
-      {/* History Slide Toggle */}
-      {!showHistory && analysisHistory.length > 0 && (
-        <button
-          onClick={() => setShowHistory(true)}
-          className="geoai-glass geoai-sidebar-layer"
-          style={{
-            position: 'absolute',
-            right: 0,
-            top: '50%',
-            transform: 'translateY(-50%)',
-            width: '48px',
-            height: '180px',
-            borderRadius: '24px 0 0 24px',
-            borderRight: 'none',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: '16px',
-            color: 'rgba(255,255,255,0.4)',
-            cursor: 'pointer'
-          }}
-        >
-          <span className="vertical-text" style={{ fontSize: '10px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.4em' }}>Audit Log</span>
-          <svg className="geoai-tool-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M15 19l-7-7 7-7" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" /></svg>
-        </button>
-      )}
-
-      {/* Analysis Pulse Matrix Overlay */}
-      {(isAnalyzing || isQuerying) && (
-        <div className="geoai-matrix-overlay">
-          <div className="geoai-matrix-spinner">
-            <div style={{ position: 'absolute', inset: 0, border: '4px solid rgba(0, 229, 255, 0.1)', borderRadius: '50%', animation: 'ping 2s infinite' }} />
-            <div style={{ position: 'absolute', inset: 0, border: '4px solid rgba(168, 85, 247, 0.1)', borderRadius: '50%', animation: 'ping 3s infinite' }} />
-            <div style={{ position: 'absolute', inset: 0, border: '6px solid var(--geoai-border)', borderTopColor: 'var(--color-accent)', borderBottomColor: '#a855f7', borderRadius: '50%', animation: 'spin 4s linear infinite', boxShadow: '0 0 50px rgba(0, 229, 255, 0.2)' }} />
+              ))
+            )}
           </div>
 
-          <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            <h2 className="geoai-glow-text" style={{ fontSize: '24px', fontWeight: 900, textTransform: 'uppercase', color: '#fff' }}>
-              {isQuerying ? 'Consulting Expert VLM' : 'Generating Mesh'}
-            </h2>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', justifyContent: 'center' }}>
-              <div style={{ height: '2px', width: '40px', background: 'linear-gradient(to right, transparent, var(--color-accent))' }} />
-              <span className="geoai-hud-label" style={{ opacity: 0.6 }}>Spatial Intelligence Active</span>
-              <div style={{ height: '2px', width: '40px', background: 'linear-gradient(to left, transparent, #a855f7)' }} />
+          <div style={{ padding: '24px', borderTop: '1px solid var(--geoai-border)', background: 'rgba(255,255,255,0.02)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', fontWeight: 700, color: 'rgba(255,255,255,0.2)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+              <span>Total Scans: {analysisHistory.length}</span>
+              <span style={{ color: 'var(--color-accent)', opacity: 0.5 }}>V1.2.4-PRO</span>
             </div>
           </div>
         </div>
-      )}
 
-      <div ref={containerRef} className="geoai-map-container" />
+        {/* History Slide Toggle */}
+        {!showHistory && analysisHistory.length > 0 && (
+          <button
+            onClick={() => setShowHistory(true)}
+            className="geoai-glass geoai-sidebar-layer"
+            style={{
+              position: 'absolute',
+              right: 0,
+              top: '50%',
+              transform: 'translateY(-50%)',
+              width: '48px',
+              height: '180px',
+              borderRadius: '24px 0 0 24px',
+              borderRight: 'none',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '16px',
+              color: 'rgba(255,255,255,0.4)',
+              cursor: 'pointer'
+            }}
+          >
+            <span className="vertical-text" style={{ fontSize: '10px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.4em' }}>Audit Log</span>
+            <svg className="geoai-tool-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M15 19l-7-7 7-7" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" /></svg>
+          </button>
+        )}
+
+        {/* Analysis Pulse Matrix Overlay */}
+        {(isAnalyzing || isQuerying) && (
+          <div className="geoai-matrix-overlay">
+            <div className="geoai-matrix-spinner">
+              <div style={{ position: 'absolute', inset: 0, border: '4px solid rgba(0, 229, 255, 0.1)', borderRadius: '50%', animation: 'ping 2s infinite' }} />
+              <div style={{ position: 'absolute', inset: 0, border: '4px solid rgba(168, 85, 247, 0.1)', borderRadius: '50%', animation: 'ping 3s infinite' }} />
+              <div style={{ position: 'absolute', inset: 0, border: '6px solid var(--geoai-border)', borderTopColor: 'var(--color-accent)', borderBottomColor: '#a855f7', borderRadius: '50%', animation: 'spin 4s linear infinite', boxShadow: '0 0 50px rgba(0, 229, 255, 0.2)' }} />
+            </div>
+
+            <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <h2 className="geoai-glow-text" style={{ fontSize: '24px', fontWeight: 900, textTransform: 'uppercase', color: '#fff' }}>
+                {isQuerying ? 'Consulting Expert VLM' : 'Generating Mesh'}
+              </h2>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', justifyContent: 'center' }}>
+                <div style={{ height: '2px', width: '40px', background: 'linear-gradient(to right, transparent, var(--color-accent))' }} />
+                <span className="geoai-hud-label" style={{ opacity: 0.6 }}>Spatial Intelligence Active</span>
+                <div style={{ height: '2px', width: '40px', background: 'linear-gradient(to left, transparent, #a855f7)' }} />
+              </div>
+            </div>
+          </div>
+        )}
+
+      </div> {/* .geoai-map-overlays */}
 
       <style>{`
+        .geoai-map-container {
+          position: absolute;
+          inset: 0;
+          z-index: 1;
+        }
+        .geoai-map-overlays {
+          position: absolute;
+          inset: 0;
+          z-index: 10;
+          pointer-events: none;
+        }
+        .geoai-map-overlays button,
+        .geoai-map-overlays input,
+        .geoai-map-overlays .interactive {
+          pointer-events: auto;
+        }
         .vertical-text {
           writing-mode: vertical-rl;
           text-orientation: mixed;
@@ -909,6 +1026,10 @@ export function GeoAIMap({
           to { transform: translateY(100%); }
         }
       `}</style>
-    </div>
+
+    </div> /* .geoai-shell */
   )
 }
+
+export default GeoAIMap
+

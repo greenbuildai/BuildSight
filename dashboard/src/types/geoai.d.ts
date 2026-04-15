@@ -119,6 +119,15 @@ export interface HeatmapUpdatePayload {
   heatmap?: HeatmapGridPayload // Grid density data from the backend
 }
 
+export interface SpatialNarrationPayload {
+  type: 'spatial_narration'
+  text: string
+  timestamp: number
+  vlm_active: boolean
+}
+
+export type GeoAIPayload = HeatmapUpdatePayload | SpatialNarrationPayload
+
 /* ── Intelligence v2 Types ─────────────────────────────────────────────── */
 
 export type EventPriority = 'INFO' | 'WARNING' | 'CRITICAL'

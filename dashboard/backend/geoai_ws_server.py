@@ -110,6 +110,8 @@ class GeoAIBroadcaster:
         
         if worker_profiles:
             self._last_workers = self.engine.process_frame(worker_profiles)
+            log.info("GeoAI pipeline connected to WS server")
+            log.info("Pushing live detections to dashboard")
             # Push latest enriched spatial workers into heatmap engine
             self.heatmap_engine.update(self._last_workers)
     
@@ -118,7 +120,9 @@ class GeoAIBroadcaster:
         cells = []
         bw = SITE_CONFIG["width_m"]
         bd = SITE_CONFIG["depth_m"]
-        cell_size = 2.0
+        # Increased from 2.0 → 8.0 to cut grid points by ~16x and prevent
+        # the event loop from blocking during payload construction.
+        cell_size = 8.0
         
         cols = int(bw / cell_size)
         rows = int(bd / cell_size)
@@ -177,6 +181,9 @@ class GeoAIBroadcaster:
                     "ppe_violations": ppe_violations,
                 })
         
+        # Safety cap: never send more than 1000 cells to the frontend
+        if len(cells) > 1000:
+            cells = cells[:1000]
         return cells
     
     def _build_alerts(self) -> List[Dict]:
@@ -298,7 +305,14 @@ class GeoAIBroadcaster:
         self._running = True
         log.info(f"Broadcast loop started (interval={BROADCAST_INTERVAL_S}s)")
         while self._running:
-            await self.broadcast()
+            try:
+                # Hard timeout: if broadcast takes longer than 150ms the event
+                # loop is saturated. Skip this cycle rather than block clients.
+                await asyncio.wait_for(self.broadcast(), timeout=0.15)
+            except asyncio.TimeoutError:
+                log.warning("Broadcast cycle exceeded safe interval (>150ms) — skipping")
+            except Exception as e:
+                log.error(f"Unexpected broadcast error: {e}")
             await asyncio.sleep(BROADCAST_INTERVAL_S)
 
     def stop(self):
@@ -353,7 +367,7 @@ async def main():
     log.info(f"Starting GeoAI WebSocket Server on port {WS_PORT}")
     
     async with serve(ws_handler, "0.0.0.0", WS_PORT):
-        log.info(f"WebSocket server listening on ws://0.0.0.0:{WS_PORT}")
+        log.info(f"GeoAI WS Server ready on ws://localhost:{WS_PORT}")
         await broadcaster.broadcast_loop()
 
 

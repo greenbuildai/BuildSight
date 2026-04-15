@@ -46,10 +46,11 @@ from typing import Dict, List, Optional, Tuple
 
 # ── Model weight paths ─────────────────────────────────────────────────────────
 _HERE       = Path(__file__).parent
-WEIGHTS_DIR = _HERE.parent / "dashboard" / "backend" / "weights"
+WEIGHTS_DIR = _HERE / "weights"
 
 MODEL_V11_PATH = WEIGHTS_DIR / "yolov11_buildsight_best.pt"
 MODEL_V26_PATH = WEIGHTS_DIR / "yolov26_buildsight_best.pt"
+
 
 # SASTRA 3-class schema
 CLS_HELMET = 0
