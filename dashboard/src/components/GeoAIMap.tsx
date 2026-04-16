@@ -1,6 +1,7 @@
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
+import * as turf from '@turf/turf'
 import type { HeatmapUpdatePayload, ZoneCollection, ZoneFeature, DynamicZone, SpatialNarrationPayload } from '../types/geoai'
 
 const SITE_CENTER: [number, number] = [10.81662, 78.66891]
@@ -18,11 +19,11 @@ const RISK_COLORS: Record<string, string> = {
 }
 
 const RISK_OPACITY_RANGE: Record<string, { min: number, max: number }> = {
-  CRITICAL: { min: 0.12, max: 0.16 },
-  HIGH: { min: 0.10, max: 0.14 },
-  MODERATE: { min: 0.08, max: 0.10 },
-  LOW: { min: 0.06, max: 0.08 },
-  none: { min: 0.03, max: 0.05 },
+  CRITICAL: { min: 0.18, max: 0.25 },
+  HIGH: { min: 0.15, max: 0.22 },
+  MODERATE: { min: 0.12, max: 0.18 },
+  LOW: { min: 0.10, max: 0.15 },
+  none: { min: 0.08, max: 0.12 },
 }
 
 interface GeoAIMapProps {
@@ -36,6 +37,7 @@ interface GeoAIMapProps {
   viewMode: string
   dynamicZones?: DynamicZone[]
   narration?: SpatialNarrationPayload | null
+  theme?: 'light' | 'dark'
 }
 
 interface OverlayMetadata {
@@ -140,6 +142,7 @@ export function GeoAIMap({
   viewMode,
   dynamicZones = [],
   narration = null,
+  theme = 'dark',
 }: GeoAIMapProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<any>(null)
@@ -167,7 +170,9 @@ export function GeoAIMap({
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [mapMode, setMapMode] = useState<'segment' | 'expert'>('segment')
 
-  const TACTICAL_URL = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
+  const TACTICAL_URL = theme === 'light' 
+    ? 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png'
+    : 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
   const SATELLITE_URL = 'https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}'
 
   const overlayCenter = useMemo(
@@ -623,12 +628,30 @@ export function GeoAIMap({
   }, [data, showHeatmap, normalizeLatLng])
 
   useEffect(() => {
-    if (!mapRef.current || !workersLayerRef.current || !data?.workers) return
+    if (!mapRef.current || !workersLayerRef.current || !data?.workers || !geoData) return
     workersLayerRef.current.clearLayers()
 
     if (!showWorkers) return
 
     data.workers.forEach(w => {
+      // 1. Spatial Guard: Only show workers within defined zones or site perimeter
+      if (!w.lat || !w.lon || isNaN(w.lat) || isNaN(w.lon)) return
+
+      // Explicit Check: Use Turf.js for robust containment verification
+      const isInsideAnyZone = geoData.features.some((feature) => {
+        try {
+          return turf.booleanPointInPolygon(
+            turf.point([w.lon, w.lat]),
+            feature as any
+          )
+        } catch (e) {
+          return false
+        }
+      })
+
+      // Also filter by fallback 'outside' classification if provided by pipeline
+      if (!isInsideAnyZone || w.zone === 'outside') return
+
       const riskColor = RISK_COLORS[w.risk] || '#00e676'
       const ppeClass = w.ppe_ok ? 'ppe-ok' : 'ppe-violation'
       const helmetIcon = w.has_helmet ? '⛑️' : '⚠'
@@ -1007,11 +1030,12 @@ export function GeoAIMap({
           background: rgba(255, 255, 255, 0.1);
         }
         .geoai-tactical-tile {
-          filter: grayscale(0.5) contrast(1.4) brightness(0.9);
-          opacity: 0.8;
+          /* Clean light aesthetic: Remove dark grayscale/contrast/brightness filters */
+          opacity: 0.9;
+          transition: opacity 300ms ease;
         }
         .geoai-map-container.leaflet-container {
-          background: #05070a !important;
+          background: #fcfcfc !important;
         }
         .geoai-zone-path {
           transition: fill-opacity 300ms ease-in-out, stroke-opacity 300ms ease-in-out;

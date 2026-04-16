@@ -7,6 +7,7 @@ import { GeoAIHUD } from './GeoAIHUD'
 import { DynamicZoneEditor } from './DynamicZoneEditor'
 import { useGeoAIWebSocket } from '../hooks/useGeoAIWebSocket'
 import type { GeoAIMode, GeoAIVisualMode, DynamicZone } from '../types/geoai'
+import { useSettings } from '../SettingsContext'
 import './GeoAIPage.css'
 
 const MODE_META: Record<GeoAIMode, { label: string; detail: string; badge: string }> = {
@@ -65,6 +66,7 @@ function AnimatedCounter({ value }: { value: number | string }) {
 }
 
 export function GeoAIPage() {
+  const { settings } = useSettings()
   const { data, narration, connectionState, cycle, acknowledgeEvent, resolveEvent } = useGeoAIWebSocket()
 
   const [dynamicZones, setDynamicZones] = useState<DynamicZone[]>([])
@@ -131,7 +133,7 @@ export function GeoAIPage() {
   }
 
   return (
-    <div className="geoai-page geoai-page--active">
+    <div className="geoai-page geoai-page--active" data-theme={settings.theme}>
       <div className="hud-scanline" />
       <div className="scanline-sweep" />
       <div className="geoai-page__glow geoai-page__glow--left" />
@@ -266,6 +268,7 @@ export function GeoAIPage() {
                       viewMode={visualMode}
                       dynamicZones={dynamicZones}
                       narration={narration}
+                      theme={settings.theme as 'light' | 'dark'}
                     />
                   </motion.div>
                 )}

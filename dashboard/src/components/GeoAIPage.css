@@ -1598,7 +1598,96 @@
   filter: drop-shadow(0 0 10px rgba(0, 229, 255, 0.6));
 }
 
-/* Compass Light Theme Overrides */
+.geoai-page[data-theme="light"] {
+  background: #fdfdfd;
+}
+
+.geoai-page[data-theme="light"] .geoai-page__glow--left {
+  background: var(--color-accent);
+  opacity: 0.12;
+}
+
+.geoai-page[data-theme="light"] .geoai-hero {
+  background: rgba(255, 255, 255, 0.82);
+  border-color: rgba(0, 0, 0, 0.08);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.04);
+}
+
+.geoai-page[data-theme="light"] .geoai-kpi-item {
+  background: rgba(0, 0, 0, 0.02);
+  border-color: rgba(0, 0, 0, 0.06);
+}
+
+.geoai-page[data-theme="light"] .geoai-kpi-item:hover {
+  background: rgba(0, 0, 0, 0.04);
+  border-color: rgba(0, 0, 0, 0.12);
+}
+
+.geoai-page[data-theme="light"] .geoai-floating-switcher {
+  background: rgba(255, 255, 255, 0.78);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+  backdrop-filter: blur(12px);
+}
+
+.geoai-page[data-theme="light"] .geoai-floating-btn {
+  color: #444;
+}
+
+.geoai-page[data-theme="light"] .geoai-floating-btn--active {
+  background: rgba(0, 123, 189, 0.08);
+  color: #007bbd;
+}
+
+.geoai-page[data-theme="light"] .geoai-mode-status {
+  background: rgba(255, 255, 255, 0.85);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  color: #555;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
+}
+
+.geoai-page[data-theme="light"] .geoai-map-shell__toolbar,
+.geoai-page[data-theme="light"] .geoai-map-legend {
+  background: rgba(252, 252, 252, 0.9);
+  border-color: rgba(0, 0, 0, 0.08);
+  backdrop-filter: blur(8px);
+}
+
+.geoai-page[data-theme="light"] .geoai-map-shell__title strong,
+.geoai-page[data-theme="light"] .geoai-map-legend__item {
+  color: #333;
+}
+
+.geoai-page[data-theme="light"] .geoai-sidecard,
+.geoai-page[data-theme="light"] .geoai-hud-shell {
+  background: rgba(255, 255, 255, 0.9);
+  border-color: rgba(0, 0, 0, 0.08);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.03);
+}
+
+.geoai-page[data-theme="light"] .geoai-hud__section-label {
+  color: #007bbd;
+}
+
+.geoai-page[data-theme="light"] .geoai-map-compass {
+  background: rgba(255, 255, 255, 0.78);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.06);
+}
+
+.geoai-page[data-theme="light"] .geoai-map-compass__north,
+.geoai-page[data-theme="light"] .geoai-map-compass__east,
+.geoai-page[data-theme="light"] .geoai-map-compass__south,
+.geoai-page[data-theme="light"] .geoai-map-compass__west {
+  color: #333;
+}
+
+.geoai-page[data-theme="light"] .geoai-map-compass__arrow {
+  border-bottom-color: #007bbd;
+  filter: none;
+}
+
+/* Maintain compatibility with older .light-theme class if used elsewhere */
 .light-theme .geoai-map-compass {
   background: rgba(255, 255, 255, 0.78);
   border: 1px solid rgba(0, 0, 0, 0.08);
@@ -1617,19 +1706,13 @@
   filter: none;
 }
 
-/* ── Tactical Map Refinements ─────────────────────────────────────────── */
 .geoai-tactical-tile {
   filter: brightness(0.9) contrast(1.1) saturate(0.85);
   transition: filter 0.5s ease;
 }
 
+[data-theme="light"] .geoai-tactical-tile,
 .light-theme .geoai-tactical-tile {
   filter: desaturate(0.5) brightness(1.05) contrast(0.95);
-}
-
-
-
-
-    100% { fill-opacity: 0.15; stroke-opacity: 1; }
 }
 
