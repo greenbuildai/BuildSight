@@ -230,7 +230,7 @@ export function GeoAIMap({
 
         try {
           // Step 2: Fallback to Backend API
-          const apiResponse = await fetch('http://localhost:8000/api/geoai/zones')
+          const apiResponse = await fetch('http://127.0.0.1:8000/api/geoai/zones')
           if (!apiResponse.ok) throw new Error('Backend API fetch failed')
           const apiData = await apiResponse.json()
 
@@ -1007,9 +1007,10 @@ export function GeoAIMap({
           background: rgba(255, 255, 255, 0.1);
         }
         .geoai-tactical-tile {
-          filter: grayscale(1) invert(1) opacity(0.2) brightness(1.2) contrast(1.2);
+          filter: grayscale(0.5) contrast(1.4) brightness(0.9);
+          opacity: 0.8;
         }
-        .geoai-map-container .leaflet-container {
+        .geoai-map-container.leaflet-container {
           background: #05070a !important;
         }
         .geoai-zone-path {
