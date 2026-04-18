@@ -20,10 +20,20 @@ def init_db():
             vest_count INTEGER,
             compliance_score FLOAT,
             unsafe_proximity_count INTEGER,
-            site_condition TEXT
+            site_condition TEXT,
+            zone_stats TEXT,
+            violation_stats TEXT
         )
     ''')
     
+    # Check if new columns exist for migration
+    cursor.execute("PRAGMA table_info(metrics)")
+    columns = [col[1] for col in cursor.fetchall()]
+    if 'zone_stats' not in columns:
+        cursor.execute("ALTER TABLE metrics ADD COLUMN zone_stats TEXT")
+    if 'violation_stats' not in columns:
+        cursor.execute("ALTER TABLE metrics ADD COLUMN violation_stats TEXT")
+
     # Alert history
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS alerts (
@@ -66,13 +76,18 @@ def get_db_connection():
     conn.row_factory = sqlite3.Row
     return conn
 
-def log_metrics(worker_count, helmet_count, vest_count, compliance_score, unsafe_proximity=0, condition="normal"):
+def log_metrics(worker_count, helmet_count, vest_count, compliance_score, unsafe_proximity=0, condition="normal", zone_stats=None, violation_stats=None):
     conn = get_db_connection()
     cursor = conn.cursor()
+    
+    # Convert dicts to JSON strings if provided
+    zs = json.dumps(zone_stats) if zone_stats else "{}"
+    vs = json.dumps(violation_stats) if violation_stats else "{}"
+    
     cursor.execute('''
-        INSERT INTO metrics (worker_count, helmet_count, vest_count, compliance_score, unsafe_proximity_count, site_condition)
-        VALUES (?, ?, ?, ?, ?, ?)
-    ''', (worker_count, helmet_count, vest_count, compliance_score, unsafe_proximity, condition))
+        INSERT INTO metrics (worker_count, helmet_count, vest_count, compliance_score, unsafe_proximity_count, site_condition, zone_stats, violation_stats)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    ''', (worker_count, helmet_count, vest_count, compliance_score, unsafe_proximity, condition, zs, vs))
     conn.commit()
     conn.close()
 
@@ -94,6 +109,36 @@ def get_analytics_summary(days=7):
     rows = cursor.fetchall()
     conn.close()
     return [dict(r) for r in rows]
+
+def get_latest_zone_metrics():
+    """
+    Returns the most recent zone-specific statistics aggregated from the last 24 hours.
+    Used to drive the Analytics Radar chart and Risk table.
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    # We aggregate metrics from the last 24 hours to get a snapshot of current activity
+    cursor.execute('''
+        SELECT zone_stats 
+        FROM metrics 
+        WHERE timestamp >= datetime('now', '-24 hours')
+        ORDER BY timestamp DESC
+    ''')
+    rows = cursor.fetchall()
+    conn.close()
+    
+    aggregated = {}
+    for r in rows:
+        try:
+            stats = json.loads(r['zone_stats'] or '{}')
+            for zone, count in stats.items():
+                aggregated[zone] = aggregated.get(zone, 0) + count
+        except:
+             continue
+             
+    return aggregated
+
 
 if __name__ == "__main__":
     init_db()

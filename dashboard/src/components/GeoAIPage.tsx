@@ -70,6 +70,7 @@ export function GeoAIPage() {
   const { data, narration, connectionState, cycle, acknowledgeEvent, resolveEvent } = useGeoAIWebSocket()
 
   const [dynamicZones, setDynamicZones] = useState<DynamicZone[]>([])
+  const [isZoneFormOpen, setIsZoneFormOpen] = useState(false)
 
   // Load zones from backend on mount so map always shows persisted zones
   useEffect(() => {
@@ -239,6 +240,14 @@ export function GeoAIPage() {
               </div>
 
               <div className="geoai-map-shell__readouts">
+                <button 
+                  className={`btn-create-zone-top ${isZoneFormOpen ? 'active' : ''}`}
+                  onClick={() => setIsZoneFormOpen(!isZoneFormOpen)}
+                >
+                  <span className="icon">{isZoneFormOpen ? '✕' : '+'}</span>
+                  <span>{isZoneFormOpen ? 'Cancel Zone' : 'Create Zone'}</span>
+                </button>
+                <div className="v-divider" />
                 <span>{MODE_META[mode].label}</span>
                 <span>{showLabels ? 'Labels ON' : 'Labels OFF'}</span>
                 {(visualMode === 'tactical' || visualMode === 'satellite') && <span>Heat {Math.round(heatmapOpacity * 100)}%</span>}
@@ -333,7 +342,11 @@ export function GeoAIPage() {
             />
 
             <div className="geoai-command-card" style={{ padding: '1rem', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-              <DynamicZoneEditor onZonesChange={setDynamicZones} />
+              <DynamicZoneEditor 
+                onZonesChange={setDynamicZones} 
+                isFormOpen={isZoneFormOpen}
+                onFormToggle={setIsZoneFormOpen}
+              />
             </div>
           </div>
         </div>

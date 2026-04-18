@@ -39,9 +39,16 @@ type TemplateMap = Record<string, [number, number][]>
 interface Props {
   /** Called whenever the zone list changes so GeoAIMap can re-render. */
   onZonesChange?: (zones: DynamicZone[]) => void
+  /** External control for the creation form */
+  isFormOpen?: boolean
+  onFormToggle?: (open: boolean) => void
 }
 
-export function DynamicZoneEditor({ onZonesChange }: Props) {
+export function DynamicZoneEditor({ onZonesChange, isFormOpen, onFormToggle }: Props) {
+  const [localFormOpen, setLocalFormOpen] = useState(false)
+  const formOpen = isFormOpen !== undefined ? isFormOpen : localFormOpen
+  const setFormOpen = onFormToggle !== undefined ? onFormToggle : setLocalFormOpen
+
   const [zones, setZones]           = useState<DynamicZone[]>([])
   const [templates, setTemplates]   = useState<TemplateMap>({})
   const [loading, setLoading]       = useState(true)
@@ -50,7 +57,6 @@ export function DynamicZoneEditor({ onZonesChange }: Props) {
   const [error, setError]           = useState<string | null>(null)
 
   // ── New zone form state ────────────────────────────────────────────────
-  const [formOpen, setFormOpen]     = useState(false)
   const [formName, setFormName]     = useState('')
   const [formRisk, setFormRisk]     = useState<ZoneRiskLevel>('moderate')
   const [formType, setFormType]     = useState<ZoneType>('restricted')

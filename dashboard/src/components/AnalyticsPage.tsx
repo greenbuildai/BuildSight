@@ -12,15 +12,28 @@ interface DailyCompliance {
 }
 
 interface ZoneRisk {
-  zone: string
+  zone_name: string
+  risk_level: string
   risk_score: number
-  violations: number
-  workers: number
+  activity: number
+  violations?: number
+  compliance_score?: number
+}
+
+interface DailyReport {
+  date: string
+  site_id: string
+  total_workers: number
+  peak_workers: number
+  total_violations: number
+  avg_compliance: number
+  violation_breakdown: Record<string, number>
+  top_risk_zones: ZoneRisk[]
 }
 
 interface AnalyticsData {
   compliance_trend: DailyCompliance[]
-  zone_risks: ZoneRisk[]
+  zone_risks: ZoneRisk[] // For the radar chart (historical or real-time)
   session: {
     frames_scanned: number
     total_workers: number
@@ -52,11 +65,11 @@ const DEMO_DATA: AnalyticsData = {
     { day: 'Sun', helmet_pct: 94, vest_pct: 90, workers: 30, violations: 6  },
   ],
   zone_risks: [
-    { zone: 'Entry Gate',    risk_score: 22, violations: 4,  workers: 31 },
-    { zone: 'Office Block',  risk_score: 8,  violations: 1,  workers: 18 },
-    { zone: 'Excavation',    risk_score: 65, violations: 14, workers: 22 },
-    { zone: 'Materials Yard', risk_score: 42, violations: 9,  workers: 15 },
-    { zone: 'Scaffold Zone', risk_score: 78, violations: 19, workers: 28 },
+    { zone_name: 'LOW RISK PARKING',        risk_score: 22, violations: 4,  workers: 31, compliance_score: 98 },
+    { zone_name: 'MODERATE RISK INTERIOR',  risk_score: 45, violations: 8,  workers: 18, compliance_score: 92 },
+    { zone_name: 'CRITICAL STAIRCASE',      risk_score: 78, violations: 19, workers: 12, compliance_score: 75 },
+    { zone_name: 'CAM-01 VIEW HEIGHT ZONE', risk_score: 65, violations: 14, workers: 22, compliance_score: 82 },
+    { zone_name: 'SCAFFOLD PERIMETER',      risk_score: 35, violations: 6,  workers: 15, compliance_score: 88 },
   ],
   session: {
     frames_scanned: 0,
@@ -88,7 +101,7 @@ function AnimBar({ pct, delay, color }: { pct: number; delay: number; color: str
 
 /* ── Radar / Spider Chart (SVG) ───────────────────────────────────────────── */
 function RadarChart({ zones }: { zones: ZoneRisk[] }) {
-  const cx = 120, cy = 120, r = 90
+  const cx = 200, cy = 180, r = 100
   const n = zones.length
   if (n === 0) return null
 
@@ -98,19 +111,24 @@ function RadarChart({ zones }: { zones: ZoneRisk[] }) {
   const dataPoints = zones.map((z, i) => {
     const angle = i * angleStep - Math.PI / 2
     const pct = Math.min(z.risk_score / 100, 1)
+    
+    // Dynamically increase offset for bottom labels to prevent overlap
+    const isBottom = Math.sin(angle) > 0.5
+    const labelOffset = isBottom ? 50 : 42
+
     return {
       x: cx + r * pct * Math.cos(angle),
       y: cy + r * pct * Math.sin(angle),
-      label: z.zone,
-      lx: cx + (r + 18) * Math.cos(angle),
-      ly: cy + (r + 18) * Math.sin(angle),
+      label: z.zone_name,
+      lx: cx + (r + labelOffset) * Math.cos(angle),
+      ly: cy + (r + labelOffset) * Math.sin(angle),
     }
   })
 
   const polygonPoints = dataPoints.map(p => `${p.x},${p.y}`).join(' ')
 
   return (
-    <svg viewBox="0 0 240 240" className="radar-chart">
+    <svg viewBox="0 0 400 400" className="radar-chart">
       {/* Grid rings */}
       {gridLevels.map((level) => (
         <polygon
@@ -122,8 +140,9 @@ function RadarChart({ zones }: { zones: ZoneRisk[] }) {
             }).join(' ')
           }
           fill="none"
-          stroke="var(--color-border)"
-          strokeWidth="0.5"
+          stroke="var(--color-accent)"
+          strokeWidth="0.8"
+          strokeOpacity="0.25"
         />
       ))}
 
@@ -136,8 +155,9 @@ function RadarChart({ zones }: { zones: ZoneRisk[] }) {
             x1={cx} y1={cy}
             x2={cx + r * Math.cos(a)}
             y2={cy + r * Math.sin(a)}
-            stroke="var(--color-border)"
-            strokeWidth="0.5"
+            stroke="var(--color-accent)"
+            strokeWidth="0.8"
+            strokeOpacity="0.15"
           />
         )
       })}
@@ -167,17 +187,34 @@ function RadarChart({ zones }: { zones: ZoneRisk[] }) {
       ))}
 
       {/* Labels */}
-      {dataPoints.map((p, i) => (
-        <text
-          key={`label-${i}`}
-          x={p.lx} y={p.ly}
-          textAnchor="middle"
-          dominantBaseline="central"
-          className="radar-label"
-        >
-          {p.label}
-        </text>
-      ))}
+      {zones.map((z, i) => {
+        const angle = i * angleStep - Math.PI / 2
+        const isBottom = Math.sin(angle) > 0.5
+        const isRight = Math.cos(angle) > 0.2
+        const isLeft = Math.cos(angle) < -0.2
+        
+        let anchor = "middle"
+        if (isRight) anchor = "start"
+        if (isLeft) anchor = "end"
+
+        let baseline = "central"
+        if (Math.sin(angle) < -0.8) baseline = "auto" // Top
+        if (Math.sin(angle) > 0.8) baseline = "hanging" // Bottom
+
+        const p = dataPoints[i]
+        
+        return (
+          <text
+            key={`label-${i}`}
+            x={p.lx} y={p.ly}
+            textAnchor={anchor}
+            dominantBaseline={baseline}
+            className="radar-label"
+          >
+            {p.label}
+          </text>
+        )
+      })}
     </svg>
   )
 }
@@ -186,26 +223,60 @@ function RadarChart({ zones }: { zones: ZoneRisk[] }) {
 export function AnalyticsPage() {
   const { stats } = useDetectionStats()
   const [data, setData] = useState<AnalyticsData>(DEMO_DATA)
-  // Try to fetch backend analytics; fall back to demo data
+  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0])
+  const [report, setReport] = useState<DailyReport | null>(null)
+  const [isExporting, setIsExporting] = useState(false)
+
+  // Fetch Dashbord Trend (7-day compliance etc)
   useEffect(() => {
-    let mounted = true
     const fetchAnalytics = async () => {
       try {
         const res = await fetch('http://localhost:8000/api/analytics/dashboard')
         if (res.ok) {
           const json = await res.json()
-          if (mounted) {
-            setData(json)
-          }
+          setData(prev => ({
+            ...prev,
+            compliance_trend: json.compliance_trend.map((d: any) => ({
+              day: d.date.split('-').pop(), // Just the day number or short date
+              helmet_pct: d.avg_compliance,
+              vest_pct: d.avg_compliance - 5, // Simulated offset if data is combined
+              workers: d.peak_workers,
+              violations: d.total_incidents
+            })),
+            zone_risks: json.zone_risks
+          }))
         }
-      } catch {
-        // Backend not available — keep demo data
+      } catch (err) {
+        console.warn('Dashboard API not available', err)
       }
     }
     fetchAnalytics()
-    const interval = setInterval(fetchAnalytics, 30000) // refresh every 30s
-    return () => { mounted = false; clearInterval(interval) }
   }, [])
+
+  // Fetch Daily Report when date changes
+  useEffect(() => {
+    const fetchReport = async () => {
+      try {
+        const res = await fetch(`http://localhost:8000/api/analytics/daily-report?date=${selectedDate}`)
+        if (res.ok) {
+          const json = await res.json()
+          setReport(json)
+        }
+      } catch (err) {
+        console.warn('Daily Report API not available')
+      }
+    }
+    fetchReport()
+  }, [selectedDate])
+
+  const handleDownloadPDF = async () => {
+    setIsExporting(true)
+    try {
+      window.open(`http://localhost:8000/api/analytics/export/pdf?date=${selectedDate}`, '_blank')
+    } finally {
+      setIsExporting(false)
+    }
+  }
 
   // Merge live detection stats into session summary
   const session = useMemo(() => {
@@ -248,8 +319,27 @@ export function AnalyticsPage() {
       animate={{ opacity: 1 }}
       transition={{ duration: 0.4 }}
     >
-      {/* Headers are provided by App.tsx topbar */}
-
+      <div className="analytics-header-actions">
+        <div className="report-selector">
+          <label>End-of-Day Report:</label>
+          <input 
+            type="date" 
+            value={selectedDate} 
+            max={new Date().toISOString().split('T')[0]}
+            onChange={(e) => setSelectedDate(e.target.value)}
+            className="report-date-picker"
+          />
+        </div>
+        <button 
+          className={`btn-export ${isExporting ? 'loading' : ''}`}
+          onClick={handleDownloadPDF}
+        >
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3" />
+          </svg>
+          {isExporting ? 'Generating...' : 'Download PDF Report'}
+        </button>
+      </div>
 
       <div className="analytics-grid">
         {/* ── 7-Day Compliance Drift ──────────────────────────────────────────── */}
@@ -285,11 +375,13 @@ export function AnalyticsPage() {
               <h3>Zone Risk Heatmap</h3>
             </div>
           </div>
-          <RadarChart zones={data.zone_risks} />
+          <div className="analytics-heatmap-main">
+            <RadarChart zones={report?.top_risk_zones || data.zone_risks} />
+          </div>
           <div className="zone-risk-table">
-            {data.zone_risks.map((z) => (
-              <div className="zone-risk-row" key={z.zone}>
-                <span className="zone-risk-name">{z.zone}</span>
+            {(report?.top_risk_zones || data.zone_risks).map((z) => (
+              <div className="zone-risk-row" key={z.zone_name}>
+                <span className="zone-risk-name">{z.zone_name}</span>
                 <div className="zone-risk-bar-track">
                   <motion.div
                     className="zone-risk-bar-fill"

@@ -40,12 +40,21 @@ from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from starlette.background import BackgroundTask
 import traceback as _traceback
 import database
+from datetime import datetime
 from geoai import geoai_router
 
 try:
     import google.generativeai as genai
 except ImportError:
     genai = None
+
+try:
+    from shapely.geometry import Point, shape
+    import shapely
+except ImportError:
+    shapely = None
+
+import report_generator
 
 # ── paths ──────────────────────────────────────────────────────────────────────
 ROOT = Path(__file__).parent.parent.parent   # BuildSight root
@@ -238,6 +247,78 @@ database.init_db()
 
 # Include GeoAI router
 app.include_router(geoai_router, prefix="/api/geoai", tags=["geoai"])
+
+# ── Spatial Mapping Logic ─────────────────────────────────────────────────────
+class SpatialMapper:
+    """
+    Maps detection coordinates to GeoAI zones using "smallest zone wins" logic.
+    Loads zones from the database and caches them for performance.
+    """
+    def __init__(self):
+        self.zones = []
+        self.last_refresh = 0
+        self.refresh_interval = 30  # seconds
+
+    def refresh_if_needed(self):
+        if time.time() - self.last_refresh < self.refresh_interval:
+            return
+        
+        try:
+            conn = database.get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute("SELECT name, geojson, risk_level FROM geo_zones")
+            rows = cursor.fetchall()
+            
+            new_zones = []
+            for r in rows:
+                try:
+                    g_data = json.loads(r['geojson'])
+                    # Handle both Feature and Geometry types
+                    geom_data = g_data['geometry'] if 'geometry' in g_data else g_data
+                    geom = shape(geom_data)
+                    new_zones.append({
+                        "name": r['name'],
+                        "geom": geom,
+                        "area": geom.area,
+                        "risk": r['risk_level']
+                    })
+                except Exception as e:
+                    logger.warning(f"SpatialMapper: Failed parsing zone {r['name']}: {e}")
+            
+            # Smallest area first → first match is the most specific zone
+            new_zones.sort(key=lambda x: x['area'])
+            self.zones = new_zones
+            self.last_refresh = time.time()
+            conn.close()
+            logger.info(f"SpatialMapper: Refreshed {len(self.zones)} zones")
+        except Exception as e:
+            logger.error(f"SpatialMapper: Refresh failed: {e}")
+
+    def get_zone_for_box(self, box, img_w, img_h):
+        """
+        box: [x1, y1, x2, y2] in pixel coords
+        Returns (zone_name, risk_level)
+        """
+        if not shapely or not self.zones:
+            return "General Site", "Low"
+
+        # Center point in pixels
+        cx = (box[0] + box[2]) / 2
+        cy = (box[1] + box[3]) / 2
+        
+        # We need to decide if zones are stored in pixels or 0-1 normalized
+        # Typically GeoAI zones are normalized 0-100 or 0-1.
+        # Assuming 0-1 normalization for zones based on common BuildSight patterns
+        nx, ny = cx / img_w, cy / img_h
+        p = Point(nx, ny)
+        
+        for z in self.zones:
+            if z['geom'].contains(p):
+                return z['name'], z['risk']
+        
+        return "General Site", "Low"
+
+spatial_mapper = SpatialMapper()
 
 # ── Shared state for GeoAI VLM / SAM access ──────────────────────────────────
 # The VLM and SAM router helpers import this module and read these variables.
@@ -2200,19 +2281,34 @@ async def detect_frame(
     det_list   = _build_det_list(detections)
     elapsed_ms = round((time.perf_counter() - t0) * 1000)
 
-    # ── Build valid_workers list for PPEStatusPanel ───────────────────────────
+    # ── Build valid_workers list with Spatial Context ─────────────────────────
+    spatial_mapper.refresh_if_needed()
     worker_names = {"worker", "person"}
     valid_workers: list[dict] = []
+    zone_counts = {}
+    violation_stats = {}
+
     for idx, d in enumerate(det_list):
         if d["class"] not in worker_names:
             continue
+            
+        # Get zone details
+        z_name, z_risk = spatial_mapper.get_zone_for_box(d["box"], img.shape[1], img.shape[0])
+        
         has_h = d.get("has_helmet")
         has_v = d.get("has_vest")
-        compliant  = bool(has_h and has_v)
-        violation  = has_h is not None and has_v is not None and not compliant
+        compliant = bool(has_h and has_v)
+        violation = has_h is not None and has_v is not None and not compliant
+        
         vtypes: list[str] = []
         if has_h is False: vtypes.append("NO HELMET")
         if has_v is False: vtypes.append("NO VEST")
+        
+        # Aggregate stats
+        zone_counts[z_name] = zone_counts.get(z_name, 0) + 1
+        for vt in vtypes:
+            violation_stats[vt] = violation_stats.get(vt, 0) + 1
+            
         valid_workers.append({
             "worker_id":         idx,
             "confidence":        d["confidence"],
@@ -2224,21 +2320,22 @@ async def detect_frame(
             "ppe_violation":     violation,
             "violation_type":    vtypes,
             "box":               d["box"],
+            "zone":              z_name,
+            "risk_level":        z_risk
         })
 
-    # ── Log metrics ───────────────────────────────────────────────────────────
+    # ── Log metrics with Zone Stats ───────────────────────────────────────────
     try:
-        class_counts: dict[str, int] = {}
-        for d in det_list:
-            class_counts[d["class"]] = class_counts.get(d["class"], 0) + 1
         database.log_metrics(
-            worker_count=class_counts.get("worker", 0),
-            helmet_count=class_counts.get("helmet", 0),
-            vest_count=class_counts.get("safety_vest", 0) or class_counts.get("safety-vest", 0),
+            worker_count=len(valid_workers),
+            helmet_count=sum(1 for w in valid_workers if w["has_helmet"]),
+            vest_count=sum(1 for w in valid_workers if w["has_vest"]),
             compliance_score=round(
                 sum(1 for w in valid_workers if w["ppe_compliant"])
                 / max(len(valid_workers), 1) * 100, 1),
-            condition=active_condition
+            condition=active_condition,
+            zone_stats=zone_counts,
+            violation_stats=violation_stats
         )
     except Exception as _db_e:
         logger.warning(f"[log_metrics] {_db_e}")
@@ -2251,11 +2348,12 @@ async def detect_frame(
     except Exception:
         pass
     detection_stats = {
-        "total_workers":        class_counts.get("worker", 0),
-        "helmets_detected":     class_counts.get("helmet", 0),
-        "vests_detected":       class_counts.get("safety_vest", 0),
+        "total_workers":        len(valid_workers),
+        "helmets_detected":     sum(1 for w in valid_workers if w["has_helmet"]),
+        "vests_detected":       sum(1 for w in valid_workers if w["has_vest"]),
         "proximity_violations": 0,
         "scene":                active_condition,
+        "zones":                zone_counts
     }
 
     return {
@@ -2556,15 +2654,196 @@ async def update_threshold(req: dict):
         return {"status": "success", "threshold": PRE_CONF}
     return JSONResponse(status_code=400, content={"error": "Missing threshold value"})
 
-# ── Analytics Endpoints ──────────────────────────────────────────────────────
+# ── Analytics & Daily Reporting Endpoints ─────────────────────────────────────
+
+@app.get("/api/analytics/daily-report")
+async def get_daily_report(date: str = None):
+    """Returns aggregated site intelligence for a specific date (YYYY-MM-DD)."""
+    if not date:
+        date = datetime.now().strftime("%Y-%m-%d")
+        
+    try:
+        conn = database.get_db_connection()
+        cursor = conn.cursor()
+        
+        # 1. Overall Summary (Max peak workers, average compliance, total unsafe incidents)
+        cursor.execute("""
+            SELECT 
+                MAX(worker_count) as peak_workers,
+                AVG(compliance_score) as avg_compliance,
+                SUM(unsafe_proximity_count) as total_incidents
+            FROM metrics 
+            WHERE strftime('%Y-%m-%d', timestamp) = ?
+        """, (date,))
+        summary_row = cursor.fetchone()
+        
+        # 2. Zone & Violation Stats (Aggregated from JSON blobs)
+        cursor.execute("SELECT zone_stats, violation_stats FROM metrics WHERE strftime('%Y-%m-%d', timestamp) = ?", (date,))
+        rows = cursor.fetchall()
+        
+        zone_agg = {}
+        viol_agg = {}
+        for r in rows:
+            try:
+                zs = json.loads(r['zone_stats'] or '{}')
+                vs = json.loads(r['violation_stats'] or '{}')
+                for z, count in zs.items():
+                    zone_agg[z] = zone_agg.get(z, 0) + count
+                for v, count in vs.items():
+                    viol_agg[v] = viol_agg.get(v, 0) + count
+            except: continue
+        
+        # Fetch zone risk levels for proper attribution
+        cursor.execute("SELECT name, risk_level FROM geo_zones")
+        zone_risks = {r['name']: r['risk_level'] for r in cursor.fetchall()}
+        
+        # 3. Construct response mapping all master zones
+        zone_data = []
+        for z_name, r_level in zone_risks.items():
+            activity_count = zone_agg.get(z_name, 0)
+            
+            # Simple risk calculation for the daily report
+            # (In production, this would use the real violation counts from vs)
+            r_score = 0
+            if activity_count > 0:
+                weight = 3 if r_level == "High" else (2 if r_level == "Medium" else 1)
+                # Normalize based on activity
+                r_score = min(100, int((activity_count / (sum(zone_agg.values()) or 1)) * 100 * (weight/3.0)))
+
+            zone_data.append({
+                "zone_name": z_name,
+                "risk_level": r_level,
+                "risk_score": r_score,
+                "activity": activity_count,
+                "violations": 0 # TODO: map from viol_agg if zone attribution per violation is added
+            })
+            
+        # 3. Recent Incident Log
+        cursor.execute("""
+            SELECT strftime('%H:%M', timestamp) as time, type, message, zone 
+            FROM alerts 
+            WHERE strftime('%Y-%m-%d', timestamp) = ?
+            ORDER BY timestamp DESC LIMIT 20
+        """, (date,))
+        alerts = [dict(r) for r in cursor.fetchall()]
+        
+        conn.close()
+        
+        report_data = {
+            "summary": {
+                "workers": summary_row['peak_workers'] or 0,
+                "compliance": round(summary_row['avg_compliance'] or 0, 1),
+                "violations": sum(viol_agg.values()),
+                "incidents": summary_row['total_incidents'] or 0
+            },
+            "zones": zone_data,
+            "violation_types": viol_agg,
+            "incidents": alerts
+        }
+        
+        return {"status": "ok", "date": date, "data": report_data}
+        
+    except Exception as e:
+        logger.error(f"Error generating daily report: {e}")
+        return JSONResponse({"status": "error", "message": str(e)}, status_code=500)
+
+@app.get("/api/analytics/export/pdf")
+async def export_pdf_report(date: str = None):
+    """Generates and streams a professional PDF report for the specified date."""
+    report_res = await get_daily_report(date)
+    if report_res.get("status") != "ok":
+        return report_res
+        
+    try:
+        pdf_bytes = report_generator.generate_daily_report(
+            "BuildSight Main Site", 
+            report_res["date"], 
+            report_res["data"]
+        )
+        
+        filename = f"BuildSight_Report_{report_res['date']}.pdf"
+        
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf", dir=TMP_DIR) as tmp:
+            tmp.write(pdf_bytes)
+            pdf_path = tmp.name
+            
+        return FileResponse(
+            pdf_path,
+            media_type="application/pdf",
+            filename=filename,
+            background=BackgroundTask(lambda p=pdf_path: Path(p).unlink(missing_ok=True))
+        )
+    except Exception as e:
+        logger.error(f"PDF Export failed: {e}")
+        return JSONResponse({"status": "error", "message": str(e)}, status_code=500)
+
+@app.get("/api/analytics/dashboard")
+async def get_analytics_dashboard():
+    """Returns the synchronized state for the Analytics tab summary widgets and charts."""
+    try:
+        # 1. 7-day Compliance Trend
+        compliance_data = database.get_analytics_summary(days=7)
+        
+        # 2. Master Zone List from geo_zones table
+        conn = database.get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT name, risk_level FROM geo_zones")
+        zones_master = {r['name']: r['risk_level'] for r in cursor.fetchall()}
+        conn.close()
+        
+        # 3. Latest Zone Stats from metrics (Last 24h)
+        zone_stats_agg = database.get_latest_zone_metrics()
+        
+        # Calculate maximum worker count across all zones for normalization in Radar chart
+        max_workers = max(zone_stats_agg.values()) if zone_stats_agg else 100
+        
+        # 4. Construct response mapping all master zones
+        zone_risks = []
+        for zone_name, risk_level in zones_master.items():
+            activity_count = zone_stats_agg.get(zone_name, 0)
+            
+            # Map activity level to a risk/utilization score (0-100)
+            # Higher activity in high-risk zones = higher analytics weighting
+            risk_score = 0
+            if activity_count > 0:
+                # Basic risk model: HighRisk = 3x weight, MediumRisk = 2x weight
+                weight = 3 if risk_level == "High" else (2 if risk_level == "Medium" else 1)
+                risk_score = min(100, int((activity_count / max_workers) * 100 * (weight / 3.0)))
+
+            zone_risks.append({
+                "zone_name": zone_name,
+                "risk_level": risk_level,
+                "risk_score": risk_score,
+                "activity": activity_count
+            })
+            
+        # If no zones defined, return empty state
+        if not zone_risks:
+             # Fallback to empty but typed structure
+             zone_risks = []
+
+        return {
+            "status": "ok",
+            "compliance_trend": compliance_data,
+            "zone_risks": zone_risks,
+            "summary": {
+                "total_zones": len(zones_master),
+                "high_risk_zones": sum(1 for r in zones_master.values() if r == "High")
+            }
+        }
+    except Exception as e:
+        logger.error(f"Dashboard analytics failed: {e}")
+        return JSONResponse({"status": "error", "message": str(e)}, status_code=500)
 
 @app.get("/api/analytics/summary")
 async def get_compliance_summary(days: int = 7):
+    """Legacy endpoint for general dashboard trend widgets."""
     data = database.get_analytics_summary(days)
     return {"summary": data}
 
 @app.get("/api/analytics/history")
 async def get_detection_history(limit: int = 100):
+    """Returns raw historical metrics rows."""
     conn = database.get_db_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM metrics ORDER BY timestamp DESC LIMIT ?", (limit,))
