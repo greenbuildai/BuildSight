@@ -8,6 +8,7 @@ import { DynamicZoneEditor } from './DynamicZoneEditor'
 import { useGeoAIWebSocket } from '../hooks/useGeoAIWebSocket'
 import type { GeoAIMode, GeoAIVisualMode, DynamicZone } from '../types/geoai'
 import { useSettings } from '../SettingsContext'
+import { useDetectionStore } from '../store/detectionStore'
 import './GeoAIPage.css'
 
 const MODE_META: Record<GeoAIMode, { label: string; detail: string; badge: string }> = {
@@ -69,6 +70,25 @@ export function GeoAIPage() {
   const { settings } = useSettings()
   const { data, narration, connectionState, cycle, acknowledgeEvent, resolveEvent } = useGeoAIWebSocket()
 
+  // Background detection state — persists across tab navigation
+  const detectionWorkers    = useDetectionStore(s => s.workerPositions)
+  const detectionViolations = useDetectionStore(s => s.violations)
+  const bgWorkerCount       = useDetectionStore(s => s.workerCount)
+  const bgIsConnected       = useDetectionStore(s => s.isConnected)
+  const bgIsRunning         = useDetectionStore(s => s.isRunning)
+  const bgCompliance        = useDetectionStore(s => s.workerPositions.length > 0
+    ? Math.round((s.workerPositions.filter(w => w.ppe_compliant).length / s.workerPositions.length) * 100)
+    : 100)
+  const requestSnapshot     = useDetectionStore(s => s.requestSnapshot)
+
+  // True when our detection WebSocket is live AND inference is running.
+  // Used to override the GeoAI spatial-engine demo mode display.
+  const detectionIsLive = bgIsConnected && bgIsRunning
+
+  // When GeoAI tab becomes active, request a fresh snapshot so markers
+  // populate immediately even if detection started on another tab.
+  useEffect(() => { requestSnapshot() }, [])
+
   const [dynamicZones, setDynamicZones] = useState<DynamicZone[]>([])
   const [isZoneFormOpen, setIsZoneFormOpen] = useState(false)
 
@@ -107,11 +127,24 @@ export function GeoAIPage() {
 
   const showHeatmap = mode === 'HEATMAP'
   const showWorkers = mode === 'TRACKING' || mode === 'HEATMAP'
-  const isDegraded = data?.kpi?.system_degraded || connectionState === 'demo'
 
-  const activeWorkers = data?.kpi?.active_workers ?? data?.site_stats?.total_workers ?? 0
-  const criticalAlerts = data?.kpi?.critical_alerts ?? 0
-  const compliance = data?.kpi?.ppe_compliance ?? 100
+  // When detection is live, override the spatial engine's demo posture so the
+  // operator sees a coherent "live" status rather than "demo / degraded".
+  const isDegraded = detectionIsLive ? false : (data?.kpi?.system_degraded || connectionState === 'demo')
+
+  // Resolved connection label: prefer detection live status over spatial engine state
+  const resolvedConnectionState = detectionIsLive ? 'live' : connectionState
+
+  // Prefer live detection values when bg service is running
+  const activeWorkers  = bgWorkerCount > 0
+    ? bgWorkerCount
+    : (data?.kpi?.active_workers ?? data?.site_stats?.total_workers ?? 0)
+  const criticalAlerts = detectionViolations.filter(v => v.severity === 'CRITICAL').length
+    || data?.kpi?.critical_alerts
+    || 0
+  const compliance = bgWorkerCount > 0
+    ? bgCompliance
+    : (data?.kpi?.ppe_compliance ?? 100)
   const avgRisk = data?.kpi?.avg_site_risk ?? 0
   const eventCount = data?.events?.length ?? 0
   const siteStatusLabel = isDegraded ? 'Degraded' : 'Operational'
@@ -149,13 +182,19 @@ export function GeoAIPage() {
           </p>
 
           <div className="geoai-hero__pills">
-            <span className={`geoai-status-chip geoai-status-chip--${connectionState}`}>
-              {connectionState === 'live' ? 'Engine Live' : connectionState}
+            <span className={`geoai-status-chip geoai-status-chip--${resolvedConnectionState}`}>
+              {resolvedConnectionState === 'live'
+                ? (detectionIsLive ? 'Detection Live' : 'Engine Live')
+                : resolvedConnectionState}
             </span>
             <span className={`geoai-status-chip ${isDegraded ? 'geoai-status-chip--degraded' : 'geoai-status-chip--healthy'}`}>
               {isDegraded ? 'Fallback Posture' : 'Full Fidelity'}
             </span>
-            <span className="geoai-status-chip">{cycle ? `Cycle ${cycle} synced` : 'Waiting for stream'}</span>
+            <span className="geoai-status-chip">
+              {detectionIsLive
+                ? `${bgWorkerCount} worker${bgWorkerCount !== 1 ? 's' : ''} detected`
+                : cycle ? `Cycle ${cycle} synced` : 'Waiting for stream'}
+            </span>
           </div>
         </div>
 
@@ -278,6 +317,8 @@ export function GeoAIPage() {
                       dynamicZones={dynamicZones}
                       narration={narration}
                       theme={settings.theme as 'light' | 'dark'}
+                      detectionWorkers={detectionWorkers}
+                      detectionViolations={detectionViolations}
                     />
                   </motion.div>
                 )}
@@ -334,7 +375,7 @@ export function GeoAIPage() {
 
             <GeoAIHUD
               data={data}
-              connectionState={connectionState}
+              connectionState={resolvedConnectionState}
               cycle={cycle}
               activeMode={visualMode}
               onAcknowledge={acknowledgeEvent}

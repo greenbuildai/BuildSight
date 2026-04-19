@@ -3,6 +3,7 @@ import 'leaflet/dist/leaflet.css'
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import * as turf from '@turf/turf'
 import type { HeatmapUpdatePayload, ZoneCollection, ZoneFeature, DynamicZone, SpatialNarrationPayload } from '../types/geoai'
+import type { WorkerPosition } from '../store/detectionStore'
 
 const SITE_CENTER: [number, number] = [10.81662, 78.66891]
 const INITIAL_ZOOM = 19
@@ -38,6 +39,10 @@ interface GeoAIMapProps {
   dynamicZones?: DynamicZone[]
   narration?: SpatialNarrationPayload | null
   theme?: 'light' | 'dark'
+  /** Live worker positions projected from background detection service */
+  detectionWorkers?: WorkerPosition[]
+  /** Active zone violations from background detection service */
+  detectionViolations?: { zone_id: string; severity: string }[]
 }
 
 interface OverlayMetadata {
@@ -143,6 +148,8 @@ export function GeoAIMap({
   dynamicZones = [],
   narration = null,
   theme = 'dark',
+  detectionWorkers = [],
+  detectionViolations = [],
 }: GeoAIMapProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<any>(null)
@@ -153,6 +160,7 @@ export function GeoAIMap({
   const labelsLayerRef = useRef<L.LayerGroup | null>(null)
   const fovLayerRef = useRef<L.LayerGroup | null>(null)
   const workersLayerRef = useRef<L.LayerGroup | null>(null)
+  const detectionWorkersLayerRef = useRef<L.LayerGroup | null>(null)
   const dynamicZonesLayerRef = useRef<L.LayerGroup | null>(null)
   const samLayerRef = useRef<L.LayerGroup | null>(null)
   const vlmLayerRef = useRef<L.LayerGroup | null>(null)
@@ -317,6 +325,7 @@ export function GeoAIMap({
     labelsLayerRef.current = L.layerGroup().addTo(map)
     fovLayerRef.current = L.layerGroup().addTo(map)
     workersLayerRef.current = L.layerGroup().addTo(map)
+    detectionWorkersLayerRef.current = L.layerGroup().addTo(map)
     dynamicZonesLayerRef.current = L.layerGroup().addTo(map)
     samLayerRef.current = L.layerGroup().addTo(map)
     vlmLayerRef.current = L.layerGroup().addTo(map)
@@ -694,6 +703,67 @@ export function GeoAIMap({
       workersLayerRef.current!.addLayer(marker)
     })
   }, [data, showWorkers, normalizeLatLng])
+
+  // ── Live detection worker markers (from background detection service) ──
+  useEffect(() => {
+    if (!mapRef.current || !detectionWorkersLayerRef.current) return
+    detectionWorkersLayerRef.current.clearLayers()
+    if (!detectionWorkers.length) return
+
+    // Compute set of zone_ids that have CRITICAL violations for styling
+    const criticalZones = new Set(
+      detectionViolations.filter(v => v.severity === 'CRITICAL').map(v => v.zone_id)
+    )
+
+    detectionWorkers.forEach(worker => {
+      if (!worker.lat || !worker.lng || isNaN(worker.lat) || isNaN(worker.lng)) return
+
+      const compliant = worker.ppe_compliant
+      const partial   = !compliant && (worker.has_helmet || worker.has_vest)
+      const color     = compliant ? '#00c864' : partial ? '#ffa500' : '#ff3030'
+      const inCritical = worker.zone_id ? criticalZones.has(worker.zone_id) : false
+
+      const pulseStyle = inCritical
+        ? `animation: detection-worker-pulse 0.9s ease-in-out infinite;`
+        : ''
+
+      const icon = L.divIcon({
+        className: '',
+        html: `<div style="
+          width:18px; height:18px; border-radius:50%;
+          background:${color}; border:2px solid rgba(255,255,255,0.85);
+          box-shadow:0 0 8px ${color}99;
+          display:flex; align-items:center; justify-content:center;
+          font-size:9px; font-weight:700; color:#fff;
+          ${pulseStyle}
+        ">W</div>`,
+        iconSize:   [18, 18],
+        iconAnchor: [9, 9],
+      })
+
+      const helmetTxt = worker.has_helmet === null ? 'Unknown' : worker.has_helmet ? '✓ Present' : '✗ Missing'
+      const vestTxt   = worker.has_vest   === null ? 'Unknown' : worker.has_vest   ? '✓ Present' : '✗ Missing'
+      const statusTxt = compliant ? '<span style="color:#00c864">✓ COMPLIANT</span>'
+                                  : '<span style="color:#ff4040">⚠ VIOLATION</span>'
+
+      const marker = L.marker([worker.lat, worker.lng], { icon, zIndexOffset: 2000 })
+      marker.bindPopup(`
+        <div class="geoai-popup" style="min-width:160px">
+          <strong style="font-size:13px">${worker.worker_id}</strong>
+          <div style="margin:4px 0">${statusTxt}</div>
+          <div>Conf: ${Math.round(worker.confidence * 100)}%</div>
+          <div>Zone: ${worker.zone_name ?? '<em>Outside zones</em>'}</div>
+          <div>Helmet: ${helmetTxt}</div>
+          <div>Vest: ${vestTxt}</div>
+          <div style="font-size:10px;color:#666;margin-top:4px">
+            UTM ${worker.utm_e.toFixed(1)}E · ${worker.utm_n.toFixed(1)}N
+          </div>
+        </div>
+      `, { className: 'geoai-popup-container' })
+
+      detectionWorkersLayerRef.current!.addLayer(marker)
+    })
+  }, [detectionWorkers, detectionViolations])
 
   // ── Dynamic zones layer ────────────────────────────────────────────────
   useEffect(() => {

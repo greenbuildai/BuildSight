@@ -1,0 +1,170 @@
+/* ── DetectionStatusBar ───────────────────────────────────────────────────── */
+
+.dsb {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 9999;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 16px;
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-size: 11px;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border-top: 1px solid rgba(255,255,255,0.06);
+  transition: background 0.3s ease;
+}
+
+.dsb--normal {
+  background: rgba(10, 12, 18, 0.92);
+  border-top-color: rgba(0, 200, 100, 0.25);
+}
+
+.dsb--critical {
+  background: rgba(30, 8, 8, 0.95);
+  border-top-color: rgba(255, 60, 60, 0.6);
+  animation: dsb-critical-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes dsb-critical-pulse {
+  0%, 100% { border-top-color: rgba(255, 60, 60, 0.6); }
+  50%       { border-top-color: rgba(255, 60, 60, 1.0); }
+}
+
+/* Status pill */
+.dsb-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.dsb-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.dsb-dot--running {
+  background: #00c864;
+  box-shadow: 0 0 6px #00c864aa;
+  animation: dsb-blink 1.2s ease-in-out infinite;
+}
+
+.dsb-dot--paused {
+  background: #ffa500;
+}
+
+@keyframes dsb-blink {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.45; }
+}
+
+.dsb-label {
+  color: #a0a8b0;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  font-size: 10px;
+}
+
+/* Progress bar */
+.dsb-progress-track {
+  width: 80px;
+  height: 4px;
+  background: rgba(255,255,255,0.08);
+  border-radius: 2px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.dsb-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #00c864, #00aaff);
+  border-radius: 2px;
+  transition: width 0.25s ease;
+}
+
+.dsb-pct {
+  color: #6a7280;
+  font-size: 10px;
+  flex-shrink: 0;
+  min-width: 28px;
+}
+
+/* Metrics */
+.dsb-metrics {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-shrink: 0;
+}
+
+.dsb-metric {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.dsb-metric-label {
+  color: #4a5260;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.dsb-metric-value {
+  color: #c8d0dc;
+  font-weight: 600;
+}
+
+.dsb-metric--crowded .dsb-metric-value {
+  color: #ff9800;
+}
+
+/* Violation ticker */
+.dsb-violation-ticker {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  overflow: hidden;
+}
+
+.dsb-violation-icon {
+  color: #ff3c3c;
+  font-size: 12px;
+  flex-shrink: 0;
+  animation: dsb-blink 0.8s ease-in-out infinite;
+}
+
+.dsb-violation-text {
+  color: #ff6060;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  letter-spacing: 0.03em;
+}
+
+/* Connection indicator */
+.dsb-conn {
+  margin-left: auto;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  flex-shrink: 0;
+}
+
+.dsb-conn--live {
+  color: #00c864;
+}
+
+.dsb-conn--lost {
+  color: #6a7280;
+  animation: dsb-blink 1s ease-in-out infinite;
+}

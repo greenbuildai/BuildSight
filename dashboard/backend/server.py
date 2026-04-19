@@ -33,7 +33,9 @@ import numpy as np
 import torch
 from pydantic import BaseModel
 import requests as _requests
-from fastapi import FastAPI, File, Form, Request, UploadFile
+import asyncio
+from typing import Set
+from fastapi import FastAPI, File, Form, Request, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
@@ -213,6 +215,46 @@ app.add_middleware(
     allow_headers=["*"],
     expose_headers=["*"],
 )
+
+# ── WebSocket connection manager ──────────────────────────────────────────────
+
+class WSConnectionManager:
+    """Manages active WebSocket connections and bridges thread→async broadcasts."""
+
+    def __init__(self):
+        self._connections: Set[WebSocket] = set()
+        self._loop: asyncio.AbstractEventLoop | None = None
+
+    def capture_loop(self, loop: asyncio.AbstractEventLoop) -> None:
+        self._loop = loop
+
+    async def connect(self, ws: WebSocket) -> None:
+        await ws.accept()
+        self._connections.add(ws)
+
+    def disconnect(self, ws: WebSocket) -> None:
+        self._connections.discard(ws)
+
+    async def broadcast(self, data: dict) -> None:
+        dead: Set[WebSocket] = set()
+        for ws in list(self._connections):
+            try:
+                await ws.send_json(data)
+            except Exception:
+                dead.add(ws)
+        self._connections -= dead
+
+    def broadcast_from_thread(self, data: dict) -> None:
+        """Safe to call from a non-async thread."""
+        if self._loop and self._loop.is_running():
+            asyncio.run_coroutine_threadsafe(self.broadcast(data), self._loop)
+
+
+ws_manager = WSConnectionManager()
+
+# bg_service is initialised in the startup event (after all inference
+# functions are defined) to avoid forward-reference issues.
+bg_service = None
 
 # ── Global exception handler ──────────────────────────────────────────────────
 # Ensures any unhandled exception inside an endpoint returns a structured JSON
@@ -599,6 +641,23 @@ async def startup_health_check():
     logger.info("═"*50)
 
 
+@app.on_event("startup")
+async def startup_bg_service():
+    """Initialise background detection service and capture asyncio event loop."""
+    global bg_service
+    ws_manager.capture_loop(asyncio.get_event_loop())
+
+    from background_detection_service import BackgroundDetectionService
+
+    def _classify_wrap(frame):
+        return classify_scene_fast(frame, model_v11, DEVICE, USE_HALF)
+
+    bg_service = BackgroundDetectionService(
+        broadcast_fn=ws_manager.broadcast_from_thread,
+        inference_fn=run_inference,
+        classify_fn=_classify_wrap,
+    )
+    logger.info("[BG] Background detection service initialised")
 
 
 # ── Automated Scene Classification (restored from Toni's backup 2026-04-11) ──
@@ -2109,6 +2168,116 @@ def _build_det_list(detections: list) -> list:
             item["has_vest"] = d["has_vest"]
         out.append(item)
     return out
+
+
+# ── WebSocket & Background Detection API ──────────────────────────────────────
+
+@app.websocket("/ws/detection")
+async def detection_ws(websocket: WebSocket):
+    """
+    Persistent WebSocket for real-time detection updates.
+    Stays connected regardless of which tab the frontend shows.
+    Emits detection_update every ~150 ms while bg_service is running.
+    """
+    await ws_manager.connect(websocket)
+    try:
+        # Send a state snapshot immediately so the client can prime its store
+        if bg_service:
+            await websocket.send_json({
+                "type": "detection_state_snapshot",
+                **bg_service.get_current_state(),
+            })
+        while True:
+            try:
+                msg = await asyncio.wait_for(websocket.receive_text(), timeout=30)
+                if msg == "request_state_snapshot" and bg_service:
+                    await websocket.send_json({
+                        "type": "detection_state_snapshot",
+                        **bg_service.get_current_state(),
+                    })
+            except asyncio.TimeoutError:
+                await websocket.send_json({"type": "ping"})
+    except WebSocketDisconnect:
+        ws_manager.disconnect(websocket)
+    except Exception:
+        ws_manager.disconnect(websocket)
+
+
+@app.post("/api/video/upload-background")
+async def upload_video_background(video: UploadFile = File(...)):
+    """
+    Upload a video and immediately start background inference.
+    Detection continues running regardless of which tab is open.
+    """
+    if bg_service is None:
+        return JSONResponse({"status": "error", "error": "service not ready"}, status_code=503)
+    try:
+        suffix = Path(video.filename).suffix if video.filename else ".mp4"
+        tmp_path = Path(TMP_DIR) / f"bg_{int(time.time())}{suffix}"
+        content = await video.read()
+        tmp_path.write_bytes(content)
+
+        bg_service.load_video(str(tmp_path))
+        bg_service.start()
+
+        return {
+            "status":       "ok",
+            "background":   True,
+            "video_path":   str(tmp_path),
+            "total_frames": bg_service.total_frames,
+            "fps":          bg_service.fps,
+        }
+    except Exception as exc:
+        logger.error("[VIDEO UPLOAD] %s", exc, exc_info=True)
+        return JSONResponse({"status": "error", "error": str(exc)}, status_code=500)
+
+
+@app.post("/api/detection/pause")
+async def pause_detection():
+    if bg_service:
+        bg_service.pause()
+    return {"status": "ok", "paused": True}
+
+
+@app.post("/api/detection/resume")
+async def resume_detection():
+    if bg_service:
+        bg_service.resume()
+    return {"status": "ok", "paused": False}
+
+
+@app.post("/api/detection/stop")
+async def stop_detection_bg():
+    if bg_service:
+        bg_service.stop()
+    return {"status": "ok", "stopped": True}
+
+
+@app.get("/api/detection/state")
+async def get_detection_state():
+    """REST fallback: current detection state."""
+    if bg_service is None:
+        return {"is_running": False, "worker_count": 0}
+    return bg_service.get_current_state()
+
+
+@app.get("/api/detection/worker-positions")
+async def get_worker_positions():
+    """
+    Returns latest worker positions with lat/lng for GeoAI map.
+    Use as a REST fallback when WebSocket is unavailable.
+    """
+    if bg_service is None:
+        return {"status": "ok", "worker_positions": [], "zone_occupancy": {}, "worker_count": 0}
+    state = bg_service.get_current_state()
+    return {
+        "status":           "ok",
+        "worker_positions": state["worker_positions"],
+        "zone_occupancy":   state["zone_occupancy"],
+        "scene_condition":  state["scene_condition"],
+        "worker_count":     state["worker_count"],
+        "timestamp":        time.time(),
+    }
 
 
 # ── API routes ─────────────────────────────────────────────────────────────────

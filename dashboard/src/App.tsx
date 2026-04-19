@@ -14,6 +14,8 @@ import { GeoAIPage } from './components/GeoAIPage'
 import { BuildSightBrain } from './components/BuildSightBrain'
 import { GodLock } from './components/GodLock'
 import { PageTransition } from './components/AnimatedLayout'
+import DetectionStatusBar from './components/DetectionStatusBar'
+import { useDetectionStore } from './store/detectionStore'
 /* Static fallback metrics — replaced by live data when detection is running */
 const STATIC_METRICS = [
   {
@@ -115,7 +117,12 @@ function formatIstSnapshot() {
 function AppInner() {
   const { settings, update } = useSettings()
   const { stats, liveAlerts, resetStats } = useDetectionStats()
+  const connectDetection = useDetectionStore(s => s.connect)
   const [view, setView] = useState<View>('dashboard')
+
+  // Connect background detection WebSocket once at app startup.
+  // This single connection persists across ALL tab navigation.
+  useEffect(() => { connectDetection() }, [])
   const [dashboardMode, setDashboardMode] = useState<DashboardMode>('LIVE')
   const [summaryCollapsed, setSummaryCollapsed] = useState(false)
   const [snapshotTimestamp, setSnapshotTimestamp] = useState(() => formatIstSnapshot())
@@ -573,12 +580,16 @@ function AppInner() {
       {/* ── SECURITY OVERLAYS ─────────────────────────────────────────────────── */}
       <AnimatePresence>
         {showGodLock && (
-          <GodLock 
-            onUnlock={onGodUnlockSuccessful} 
-            onClose={() => setShowGodLock(false)} 
+          <GodLock
+            onUnlock={onGodUnlockSuccessful}
+            onClose={() => setShowGodLock(false)}
           />
         )}
       </AnimatePresence>
+
+      {/* ── PERSISTENT DETECTION STATUS BAR ──────────────────────────────────── */}
+      {/* Visible on all tabs while background detection is running */}
+      <DetectionStatusBar />
     </div>
 )
 }
