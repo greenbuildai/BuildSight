@@ -214,7 +214,7 @@ export function DynamicZoneEditor({ onZonesChange, isFormOpen, onFormToggle }: P
           >
             {samRunning ? 'DETECTING…' : 'SAM DETECT'}
           </button>
-          <button className="dze__btn dze__btn--add" onClick={() => setFormOpen(o => !o)}>
+          <button className="dze__btn dze__btn--add" onClick={() => setFormOpen(!formOpen)}>
             {formOpen ? 'CANCEL' : '+ ADD ZONE'}
           </button>
         </div>

@@ -36,10 +36,10 @@ BACKEND_DIR = os.path.join(PROJECT_ROOT, "dashboard", "backend")
 sys.path.append(BACKEND_DIR)
 
 try:
-    from geoai.utils.spatial_mapper import SpatialMapper
-    from heatmap_engine import HeatmapEngine
-    from buildsight_ensemble import EnsemblePipeline
-    from geoai.utils.intelligence import BuildSightIntelligence
+    from geoai.utils.spatial_mapper import SpatialMapper       # type: ignore[import]
+    from heatmap_engine import HeatmapEngine                   # type: ignore[import]
+    from buildsight_ensemble import EnsemblePipeline           # type: ignore[import]
+    from geoai.utils.intelligence import BuildSightIntelligence  # type: ignore[import]
 except ImportError as e:
     print(f"Warning: Module imports failed: {e}. Ensure dashboard/backend is in path.")
 
@@ -199,12 +199,15 @@ class GeoAIPipeline:
         
         try:
             if not self.ws_conn:
-                self.ws_conn = await websockets.connect(self.ws_url)
+                self.ws_conn = await websockets.connect(self.ws_url, max_size=8 * 1024 * 1024)
             
             payload = {
                 "type": "update_detections",
                 "camera_id": self.camera_id,
-                "detections": detections
+                "detections": detections,
+                "fps": detections[0].get("_fps", 0) if detections else 0,
+                "latency_ms": detections[0].get("_latency", 0) if detections else 0,
+                "scene_condition": detections[0].get("_condition", "S1_normal") if detections else "S1_normal"
             }
             await self.ws_conn.send(json.dumps(payload))
         except Exception as e:
@@ -319,6 +322,16 @@ class GeoAIPipeline:
 
                 # 7-8. Spatial Mapping & Zone Assignment
                 processed_data = self.process_frame(frame_idx, detections)
+                
+                # Performance metrics
+                latency_ms = (time.time() - start_time) * 1000
+                fps = 1.0 / (time.time() - start_time)
+                
+                # Tag telemetry metadata into the first detection object for the WS pusher to extract
+                if processed_data:
+                    processed_data[0]["_fps"] = round(fps, 1)
+                    processed_data[0]["_latency"] = int(latency_ms)
+                    processed_data[0]["_condition"] = "S1_normal" # Placeholder for future dynamic classification
                 
                 # 9. Save to DB
                 if self.use_db:

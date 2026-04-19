@@ -44,6 +44,7 @@ import traceback as _traceback
 import database
 from datetime import datetime
 from geoai import geoai_router
+from geoai.utils.spatial_mapper import SpatialMapper as BaseSpatialMapper
 
 try:
     import google.generativeai as genai
@@ -291,12 +292,13 @@ database.init_db()
 app.include_router(geoai_router, prefix="/api/geoai", tags=["geoai"])
 
 # ── Spatial Mapping Logic ─────────────────────────────────────────────────────
-class SpatialMapper:
+class SpatialMapper(BaseSpatialMapper):
     """
     Maps detection coordinates to GeoAI zones using "smallest zone wins" logic.
     Loads zones from the database and caches them for performance.
     """
     def __init__(self):
+        super().__init__()
         self.zones = []
         self.last_refresh = 0
         self.refresh_interval = 30  # seconds
@@ -2452,6 +2454,10 @@ async def detect_frame(
 
     # ── Build valid_workers list with Spatial Context ─────────────────────────
     spatial_mapper.refresh_if_needed()
+    # Update mapper dimensions for the current frame to ensure correct relative mapping
+    spatial_mapper.frame_w = img.shape[1]
+    spatial_mapper.frame_h = img.shape[0]
+
     worker_names = {"worker", "person"}
     valid_workers: list[dict] = []
     zone_counts = {}
@@ -2478,6 +2484,20 @@ async def detect_frame(
         for vt in vtypes:
             violation_stats[vt] = violation_stats.get(vt, 0) + 1
             
+        # Calculate spatial coordinates for GeoAI map
+        bw = d["box"]
+        cx, cy = (bw[0] + bw[2]) / 2, (bw[1] + bw[3]) / 2
+        
+        # pixel_to_gps returns (lat, lng)
+        lat, lng = spatial_mapper.pixel_to_gps(cx, cy)
+        
+        # Get UTM for the popup detail
+        utm_e, utm_n = (0.0, 0.0)
+        if hasattr(spatial_mapper, 'transformer_to_utm') and spatial_mapper.transformer_to_utm:
+             try:
+                 utm_e, utm_n = spatial_mapper.transformer_to_utm.transform(lng, lat)
+             except: pass
+
         valid_workers.append({
             "worker_id":         idx,
             "confidence":        d["confidence"],
@@ -2489,8 +2509,14 @@ async def detect_frame(
             "ppe_violation":     violation,
             "violation_type":    vtypes,
             "box":               d["box"],
-            "zone":              z_name,
-            "risk_level":        z_risk
+            "zone_id":           None,           # Placeholder for now
+            "zone_name":         z_name,
+            "risk_level":        z_risk,
+            "lat":               round(lat, 6),   # Precision for leaflet
+            "lng":               round(lng, 6),
+            "utm_e":             round(utm_e, 2),
+            "utm_n":             round(utm_n, 2),
+            "source":            "http_upload"
         })
 
     # ── Log metrics with Zone Stats ───────────────────────────────────────────

@@ -186,7 +186,7 @@ class BackgroundDetectionService:
                 # ── Inference ─────────────────────────────────────────────
                 detections, _, _perf = self._inference(frame, scene, conf_threshold)
 
-                workers = [d for d in detections if d.get("class") == "worker"]
+                workers = [d for d in detections if d.get("cls") == 0]
 
                 # ── Project pixel → world ─────────────────────────────────
                 worker_positions = []
@@ -198,7 +198,7 @@ class BackgroundDetectionService:
 
                     worker_positions.append({
                         "worker_id":    w.get("track_id", f"W{i+1}"),
-                        "confidence":   round(w.get("confidence", 0), 3),
+                        "confidence":   round(w.get("score", 0), 3),
                         "lat":          pos["lat"],
                         "lng":          pos["lng"],
                         "utm_e":        pos["utm_e"],

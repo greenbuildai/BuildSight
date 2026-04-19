@@ -75,18 +75,27 @@ class GeoAIBroadcaster:
         self.clients: Set[ServerConnection] = set()
         self.cycle = 0
         self._last_workers: List[SpatialWorker] = []
+        self._last_fps = 0
+        self._last_latency = 0
+        self._last_condition = "S1_normal"
         self._running = False
         log.info("GeoAIBroadcaster initialized")
 
-    def update_from_detections(self, detections: list):
+    def update_from_detections(self, detections: list, fps: float = 0, latency_ms: float = 0, scene_condition: str = "S1_normal"):
         """
-        Called by the FastAPI server (via shared state or HTTP)
+        Called by the FastAPI server or GeoAI pipeline via WS
         when new detection results are available.
         
         Args:
             detections: List of detection dicts from the pipeline
-                        with keys: class, box, confidence, has_helmet, has_vest
+            fps: Current pipeline FPS
+            latency_ms: Processing latency
+            scene_condition: Current estimated site condition
         """
+        self._last_fps = fps
+        self._last_latency = latency_ms
+        self._last_condition = scene_condition
+        
         worker_profiles = []
         for d in detections:
             cls = d.get("class", "")
@@ -251,6 +260,9 @@ class GeoAIBroadcaster:
                 "ppe_compliant": compliant,
                 "max_risk_score": max((c["risk_score"] for c in cells), default=0.0),
                 "critical_zones": sum(1 for c in cells if c["risk_level"] == "CRITICAL"),
+                "fps": self._last_fps,
+                "latency_ms": self._last_latency,
+                "scene_condition": self._last_condition,
             },
             "events": events,
             "trails": trails,
@@ -350,7 +362,12 @@ async def ws_handler(websocket: ServerConnection):
                 
                 elif cmd_type == "update_detections":
                     detections = cmd.get("detections", [])
-                    broadcaster.update_from_detections(detections)
+                    broadcaster.update_from_detections(
+                        detections,
+                        fps=cmd.get("fps", 0),
+                        latency_ms=cmd.get("latency_ms", 0),
+                        scene_condition=cmd.get("scene_condition", "S1_normal")
+                    )
                 
             except json.JSONDecodeError:
                 pass
@@ -366,7 +383,14 @@ async def main():
     """Start the WebSocket server and broadcast loop."""
     log.info(f"Starting GeoAI WebSocket Server on port {WS_PORT}")
     
-    async with serve(ws_handler, "0.0.0.0", WS_PORT):
+    async with serve(
+        ws_handler,
+        "0.0.0.0",
+        WS_PORT,
+        max_size=8 * 1024 * 1024,   # 8 MB — prevents 1009 "message too big" crash
+        ping_interval=20,
+        ping_timeout=30,
+    ):
         log.info(f"GeoAI WS Server ready on ws://localhost:{WS_PORT}")
         await broadcaster.broadcast_loop()
 

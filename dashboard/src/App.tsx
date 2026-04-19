@@ -468,7 +468,7 @@ function AppInner() {
                 </div>
               </div>
 
-              <aside className="hero-grid__side hero-grid__side--metrics panel">
+              <aside className="hero-grid__side hero-grid__side--metrics panel" id="metrics">
                 <div className="panel-heading">
                   <div>
                     <p className="section-label">Real-Time Indicators</p>

@@ -25,6 +25,7 @@ export interface WorkerPosition {
   pixel_y:        number
   zone_id:        string | null
   zone_name:      string | null
+  source?:        string
 }
 
 export interface ZoneViolation {
@@ -67,6 +68,14 @@ interface DetectionState {
   connect:         () => void
   disconnect:      () => void
   requestSnapshot: () => void
+  /** Directly set isRunning (called by video-upload inference to trigger GeoAI live mode) */
+  setRunning:         (running: boolean) => void
+  setWorkerPositions: (workers: WorkerPosition[]) => void
+  setViolations:      (violations: ZoneViolation[]) => void
+  setWorkerCount:     (count: number) => void
+  setFPS:             (fps: number) => void
+  setLatencyMs:       (ms: number) => void
+  setSceneCondition:  (cond: string) => void
 }
 
 const WS_URL = 'ws://localhost:8000/ws/detection'
@@ -182,5 +191,33 @@ export const useDetectionStore = create<DetectionState>((set, get) => ({
     if (socket?.readyState === WebSocket.OPEN) {
       socket.send('request_state_snapshot')
     }
+  },
+
+  setRunning: (running: boolean) => {
+    set({ isRunning: running })
+  },
+
+  setWorkerPositions: (workers: WorkerPosition[]) => {
+    set({ workerPositions: workers })
+  },
+
+  setViolations: (violations: ZoneViolation[]) => {
+    set({ violations })
+  },
+
+  setWorkerCount: (count: number) => {
+    set({ workerCount: count })
+  },
+
+  setFPS: (fps: number) => {
+    set({ fps })
+  },
+
+  setLatencyMs: (ms: number) => {
+    set({ latencyMs: ms })
+  },
+
+  setSceneCondition: (cond: string) => {
+    set({ sceneCondition: cond })
   },
 }))

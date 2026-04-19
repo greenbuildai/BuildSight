@@ -81,9 +81,9 @@ export function GeoAIPage() {
     : 100)
   const requestSnapshot     = useDetectionStore(s => s.requestSnapshot)
 
-  // True when our detection WebSocket is live AND inference is running.
+  // True when inference is running (either via background WebSocket or manual upload).
   // Used to override the GeoAI spatial-engine demo mode display.
-  const detectionIsLive = bgIsConnected && bgIsRunning
+  const detectionIsLive = bgIsRunning
 
   // When GeoAI tab becomes active, request a fresh snapshot so markers
   // populate immediately even if detection started on another tab.
@@ -156,6 +156,35 @@ export function GeoAIPage() {
     if (visualMode === 'plan2d') return '2D Plan Active'
     return '3D View Active'
   }, [visualMode])
+
+  const statusData = useMemo(() => {
+    const workers = data?.workers ?? []
+    const events  = data?.events  ?? []
+
+    // Highest-risk worker on site right now
+    const topWorker = workers.reduce<typeof workers[number] | null>((best, w) => {
+      if (!best) return w
+      const riskRank = (r: string) => r === 'CRITICAL' ? 3 : r === 'HIGH' ? 2 : r === 'MODERATE' ? 1 : 0
+      return riskRank(w.risk) > riskRank(best.risk) ? w : best
+    }, null)
+
+    // Most recent critical/warning event
+    const topEvent = events.find(e => e.priority === 'CRITICAL') ??
+                     events.find(e => e.priority === 'WARNING') ??
+                     events[0] ?? null
+
+    const postgisHealth = data?.backend_health?.find(h => h.service === 'PostGIS')
+    const mapperStatus = postgisHealth
+      ? (postgisHealth.status === 'HEALTHY' ? 'PostGIS Connected' : 'PostGIS Degraded')
+      : 'Demo Fallback'
+
+    return {
+      modeMeta: MODE_META[mode],
+      topWorker,
+      topEvent,
+      mapperStatus,
+    }
+  }, [data, mode])
 
   const handleVisualModeChange = (nextMode: GeoAIVisualMode) => {
     if (nextMode === visualMode) return
@@ -380,6 +409,7 @@ export function GeoAIPage() {
               activeMode={visualMode}
               onAcknowledge={acknowledgeEvent}
               onResolve={resolveEvent}
+              statusData={statusData}
             />
 
             <div className="geoai-command-card" style={{ padding: '1rem', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>

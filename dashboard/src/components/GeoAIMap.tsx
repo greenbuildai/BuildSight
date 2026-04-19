@@ -746,7 +746,8 @@ export function GeoAIMap({
       const statusTxt = compliant ? '<span style="color:#00c864">✓ COMPLIANT</span>'
                                   : '<span style="color:#ff4040">⚠ VIOLATION</span>'
 
-      const marker = L.marker([worker.lat, worker.lng], { icon, zIndexOffset: 2000 })
+      const pos = normalizeLatLng([worker.lat, worker.lng])
+      const marker = L.marker(pos, { icon, zIndexOffset: 2000 })
       marker.bindPopup(`
         <div class="geoai-popup" style="min-width:160px">
           <strong style="font-size:13px">${worker.worker_id}</strong>

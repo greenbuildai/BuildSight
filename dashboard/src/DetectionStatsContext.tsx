@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useCallback, type ReactNode } from 'react'
 import type { AlertItem } from './components/AlertLog'
+import { useDetectionStore, type WorkerPosition, type ZoneViolation } from './store/detectionStore'
 
 /* ═══════════════════════════════════════════════════════════════════════════════
    BuildSight — Detection Stats Context
@@ -44,7 +45,14 @@ interface DetectionStatsCtx {
   stats: DetectionStats
   liveAlerts: AlertItem[]
   /** Called by DetectionPanel on every inference result */
-  pushDetections: (detections: Array<{ class: string; confidence: number }>, elapsedMs: number) => void
+  pushDetections: (
+    detections: Array<{ class: string; confidence: number }>, 
+    elapsedMs: number,
+    validWorkers?: WorkerPosition[],
+    violations?: ZoneViolation[],
+    fps?: number,
+    sceneCondition?: string
+  ) => void
   /** Mark detection as running or stopped */
   setRunning: (running: boolean) => void
   /** Set model name */
@@ -141,8 +149,25 @@ export function DetectionStatsProvider({ children }: { children: ReactNode }) {
   const [stats, setStats] = useState<DetectionStats>({ ...EMPTY })
   const [liveAlerts, setLiveAlerts] = useState<AlertItem[]>([])
 
+  // Bridge to global Zustand store so GeoAI live-mode check picks up
+  // video-upload inference state without needing a backend WS message.
+  const storeSetWorkers    = useDetectionStore(s => s.setWorkerPositions)
+  const storeSetViolations = useDetectionStore(s => s.setViolations)
+  const storeSetCount      = useDetectionStore(s => s.setWorkerCount)
+  const storeSetFPS        = useDetectionStore(s => s.setFPS)
+  const storeSetLatency    = useDetectionStore(s => s.setLatencyMs)
+  const storeSetScene      = useDetectionStore(s => s.setSceneCondition)
+  const storeSetRunning    = useDetectionStore(s => s.setRunning)
+
   const pushDetections = useCallback(
-    (detections: Array<{ class: string; confidence: number }>, elapsedMs: number) => {
+    (
+      detections: Array<{ class: string; confidence: number }>, 
+      elapsedMs: number,
+      validWorkers?: WorkerPosition[],
+      violations?: ZoneViolation[],
+      fps?: number,
+      sceneCondition?: string
+    ) => {
       let workers = 0, helmets = 0, vests = 0
 
       for (const d of detections) {
@@ -171,20 +196,29 @@ export function DetectionStatsProvider({ children }: { children: ReactNode }) {
           totalWorkers: effectiveWorkers,
           helmetsDetected: helmets,
           vestsDetected: vests,
-          proximityViolations: prev.proximityViolations, // kept cumulative from live feed
+          proximityViolations: violations?.length ?? prev.proximityViolations,
           avgConfidence: detections.length > 0 ? confSum / detections.length : prev.avgConfidence,
           elapsedMs,
           framesScanned: prev.framesScanned + 1,
           isRunning: true,
         }
       })
+      // Bridge to global store for GeoAI dashboard
+      if (validWorkers) storeSetWorkers(validWorkers)
+      if (violations)   storeSetViolations(violations)
+      storeSetCount(effectiveWorkers)
+      if (fps !== undefined) storeSetFPS(fps)
+      storeSetLatency(elapsedMs)
+      if (sceneCondition) storeSetScene(sceneCondition)
     },
-    [],
+    [storeSetWorkers, storeSetViolations, storeSetCount, storeSetFPS, storeSetLatency, storeSetScene, storeSetRunning],
   )
 
   const setRunning = useCallback((running: boolean) => {
     setStats(prev => ({ ...prev, isRunning: running }))
-  }, [])
+    // Also update the global Zustand store so GeoAI detects the live state
+    storeSetRunning(running)
+  }, [storeSetRunning])
 
   const setModelName = useCallback((name: string) => {
     setStats(prev => ({ ...prev, modelName: name }))

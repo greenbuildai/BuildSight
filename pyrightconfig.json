@@ -1,0 +1,17 @@
+{
+  "pythonVersion": "3.10",
+  "venvPath": ".",
+  "venv": ".venv",
+  "pythonPlatform": "Windows",
+  "extraPaths": [
+    "dashboard/backend",
+    "."
+  ],
+  "exclude": [
+    "node_modules",
+    ".venv",
+    "**/__pycache__"
+  ],
+  "reportMissingImports": "warning",
+  "reportMissingModuleSource": "none"
+}

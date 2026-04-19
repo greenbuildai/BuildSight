@@ -1,23 +1,12 @@
 import {
-  useRef, useState, useEffect, useCallback, useMemo,
+  useRef, useState, useEffect, useLayoutEffect, useCallback, useMemo,
 } from 'react'
 import { useDetectionStats } from '../DetectionStatsContext'
 import { useSettings } from '../SettingsContext'
-import { useDetectionStore } from '../store/detectionStore'
 import PPEStatusPanel, { type WorkerPPEStatus } from './PPEStatusPanel'
 import './DetectionPanel.css'
 
 const API = 'http://localhost:8000/api'
-
-// ── Video session persistence ─────────────────────────────────────────────────
-// Module-level: survives VideoUploadMode remounts (tab navigation) for the
-// lifetime of the page. Cleared when the user explicitly removes the file.
-interface VideoSession {
-  file:       File
-  currentTime: number
-  wasPlaying:  boolean
-}
-let _videoSession: VideoSession | null = null
 
 const CONDITIONS = ['S1_normal', 'S2_dusty', 'S3_low_light', 'S4_crowded'] as const
 type Condition = typeof CONDITIONS[number]
@@ -92,6 +81,16 @@ function resolveCssVar(varName: string): string {
   const name = varName.match(/\((--[^)]+)\)/)?.[1]
   if (!name) return '#ff9900' // Fail-safe fallback
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || '#ff9900'
+}
+
+// ── Module-level VideoSession — survives component unmount ────────────────────
+// Stores the File object and playback position so that when the user navigates
+// away (unmounting VideoUploadMode) and returns, the file is restored and the
+// video resumes from the same timestamp without re-uploading.
+const _videoSession = {
+  file: null as File | null,
+  currentTime: 0,
+  wasPlaying: false,
 }
 
 // ── Lightweight IoU tracker (module-level, no React state) ─────────────────────
@@ -359,14 +358,14 @@ function pointsFromHeatmap(payload: DetectionHeatmapPayload | undefined, now: nu
 
 // ── Shared condition picker ─────────────────────────────────────────────────────
 const CONDITION_COLORS: Record<string, string> = {
-  S1_normal:    '#00cc66',
-  S2_dusty:     '#ffaa00',
+  S1_normal: '#00cc66',
+  S2_dusty: '#ffaa00',
   S3_low_light: '#8866ff',
-  S4_crowded:   '#ff4444',
-  S1_NORMAL:    '#00cc66',
-  S2_DUSTY:     '#ffaa00',
+  S4_crowded: '#ff4444',
+  S1_NORMAL: '#00cc66',
+  S2_DUSTY: '#ffaa00',
   S3_LOW_LIGHT: '#8866ff',
-  S4_CROWDED:   '#ff4444',
+  S4_CROWDED: '#ff4444',
 }
 
 function SceneAutoIndicator({
@@ -635,7 +634,7 @@ function ImageUploadMode() {
       const data = await res.json()
       setResult(data)
       // Push to shared stats context
-      pushDetections(data.detections, data.elapsed_ms)
+      pushDetections(data.detections, data.elapsed_ms, [], [], 0, data.condition)
       setRunning(true)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Detection failed')
@@ -737,7 +736,8 @@ function ImageUploadMode() {
 //     drawn box toward its latest detected position — no sudden jumps.
 //
 function VideoUploadMode() {
-  const [file, setFile] = useState<File | null>(null)
+  // Restore session file on mount so the video persists across tab navigation
+  const [file, setFile] = useState<File | null>(() => _videoSession.file)
   // Initialise condition and autoMode from sessionStorage so manual overrides
   // survive component remounts within the same tab. Defaults: AUTO=true, S1_normal.
   const [condition, setCondition] = useState<Condition>(
@@ -763,16 +763,11 @@ function VideoUploadMode() {
   const [peakRiskMoments, setPeakRiskMoments] = useState<PeakRiskMoment[]>([])
   const { settings } = useSettings()
   const { pushDetections, setRunning } = useDetectionStats()
-  const bgConnect      = useDetectionStore(s => s.connect)
-  const bgRequestSnap  = useDetectionStore(s => s.requestSnapshot)
 
-  // fileRef keeps a stable reference to the current File so onPlay
-  // (a useCallback) can access it without stale-closure problems.
-  const fileRef = useRef<File | null>(null)
-
-  // Session restore refs — populated on mount when returning from another tab
-  const restoreSeekRef = useRef(0)
-  const restorePlayRef = useRef(false)
+  // Guard: set to true by useLayoutEffect cleanup so browser-triggered
+  // onPause (fired when the video element is removed from the DOM during
+  // a tab switch) doesn't stop the background inference loop.
+  const isUnmountingRef = useRef(false)
 
   const videoRef = useRef<HTMLVideoElement>(null)
   const overlayRef = useRef<HTMLCanvasElement>(null)
@@ -819,37 +814,12 @@ function VideoUploadMode() {
       model: settings.selectedModel,
     }
     // Persist user preference to sessionStorage
-    sessionStorage.setItem('bs_condition',  condition)
-    sessionStorage.setItem('bs_auto_mode',  autoMode ? '1' : '0')
+    sessionStorage.setItem('bs_condition', condition)
+    sessionStorage.setItem('bs_auto_mode', autoMode ? '1' : '0')
   }, [condition, autoMode, settings])
 
   const videoUrl = useMemo(() => (file ? URL.createObjectURL(file) : null), [file])
   useEffect(() => () => { if (videoUrl) URL.revokeObjectURL(videoUrl) }, [videoUrl])
-
-  // ── Video session: save on unmount, restore on mount ──────────────────────
-  // This lets the operator navigate to GeoAI / Site Intelligence and return
-  // to find the video exactly where they left off, with inference resuming.
-  useEffect(() => {
-    // MOUNT: restore previous session if one exists
-    if (_videoSession) {
-      const { file: savedFile, currentTime } = _videoSession
-      restoreSeekRef.current = currentTime
-      restorePlayRef.current = true   // always resume playing on tab return
-      handleFile(savedFile)           // sets fileRef + file state → triggers video load
-    }
-
-    return () => {
-      // UNMOUNT: save current session so it survives the tab switch
-      const v = videoRef.current
-      if (fileRef.current) {
-        _videoSession = {
-          file:        fileRef.current,
-          currentTime: v?.currentTime ?? 0,
-          wasPlaying:  !(v?.paused ?? true),
-        }
-      }
-    }
-  }, [])  // eslint-disable-line react-hooks/exhaustive-deps -- intentional mount-only
 
   // ── ROI helpers ──────────────────────────────────────────────────────────────
   // Point-in-polygon via ray-casting (works in any coord space)
@@ -1119,7 +1089,7 @@ function VideoUploadMode() {
         form.append('image_b64', b64)
         // Send the client-side condition for manual mode; backend ignores it
         // when auto_condition=1 and uses detect_condition() internally instead.
-        form.append('condition',      cfg.condition)
+        form.append('condition', cfg.condition)
         form.append('auto_condition', cfg.autoMode ? '1' : '0')
         form.append('reset_tracker', sendReset ? '1' : '0')
         form.append('model', cfg.model)
@@ -1139,7 +1109,7 @@ function VideoUploadMode() {
           // Always update canvas-driving refs immediately (no React re-render)
           pendingRef.current = data.detections
           pendingHeatmapRef.current = data.heatmap ?? null
-          pushDetections(data.detections, frameElapsed)
+          pushDetections(data.detections, frameElapsed, data.valid_workers, [], pendingFpsRef.current, data.condition ?? pendingCondRef.current)
 
           // 10-frame rolling FPS average — stored in pending ref, not state yet
           if (frameElapsed > 0) {
@@ -1152,7 +1122,7 @@ function VideoUploadMode() {
           // Accumulate pending label values without triggering state updates
           if (data.condition) pendingCondRef.current = data.condition
           pendingDetCountRef.current = data.detections.length
-          
+
           // Store latest performance metrics
           if (data.perf_metrics) {
             pendingPerfRef.current = data.perf_metrics
@@ -1216,28 +1186,21 @@ function VideoUploadMode() {
     rafRef.current = requestAnimationFrame(drawOverlay)
     startInferenceLoop()
     setRunning(true)
-
-    // Upload the video to the background service so inference continues
-    // running on the server even when the operator navigates away from
-    // this tab to GeoAI or Site Intelligence.
-    const f = fileRef.current
-    if (f) {
-      bgConnect()  // ensure WebSocket is open
-      const form = new FormData()
-      form.append('video', f)
-      fetch(`${API}/video/upload-background`, { method: 'POST', body: form })
-        .then(r => r.ok ? r.json() : Promise.reject(r.status))
-        .then(() => bgRequestSnap())
-        .catch(err => console.warn('[BG] Background upload failed:', err))
-    }
-  }, [drawOverlay, startInferenceLoop, setRunning, bgConnect, bgRequestSnap])
+    _videoSession.wasPlaying = true
+  }, [drawOverlay, startInferenceLoop, setRunning])
 
   const onPause = useCallback(() => {
+    // If the component is unmounting (tab navigation), the browser fires a
+    // synthetic pause event when the <video> element is removed from the DOM.
+    // We must NOT treat this as a user intent to stop — that would kill the
+    // background inference loop. Only respond when the user explicitly paused.
+    if (isUnmountingRef.current) return
     setIsPlaying(false)
     isRunningRef.current = false
     if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null }
     // Keep last overlay visible when paused
     setRunning(false)
+    _videoSession.wasPlaying = false
   }, [setRunning])
 
   const onEnded = useCallback(() => {
@@ -1245,35 +1208,44 @@ function VideoUploadMode() {
     stopAll(true)
     setDetections([])
     setRunning(false)
+    _videoSession.file = null
+    _videoSession.wasPlaying = false
   }, [stopAll, setRunning])
 
   const onTimeUpdate = useCallback(() => {
-    const v = videoRef.current; if (v) setCurrentTime(v.currentTime)
+    const v = videoRef.current
+    if (v) {
+      setCurrentTime(v.currentTime)
+      _videoSession.currentTime = v.currentTime
+    }
   }, [])
 
   const onLoadedMetadata = useCallback(() => {
     const v = videoRef.current
-    if (!v) return
-    setDuration(v.duration)
-
-    // Restore session: seek then play (restorePlayRef is always true on restore)
-    const seekTo   = restoreSeekRef.current
-    const shouldPlay = restorePlayRef.current
-    restoreSeekRef.current = 0
-    restorePlayRef.current = false
-
-    if (seekTo > 0) {
-      v.currentTime = seekTo
-      if (shouldPlay) {
-        v.addEventListener('seeked', () => v.play().catch(() => {}), { once: true })
+    if (v) {
+      setDuration(v.duration)
+      // Restore playback position when remounting after a tab switch
+      if (_videoSession.currentTime > 0 && _videoSession.currentTime < v.duration) {
+        v.currentTime = _videoSession.currentTime
       }
-    } else if (shouldPlay) {
-      // Video was at position 0 — no seek needed, play immediately
-      v.play().catch(() => {})
     }
   }, [])
 
-  useEffect(() => () => stopAll(), [stopAll])
+  // ── Unmount guard: must run synchronously before DOM is removed ───────────────
+  // useLayoutEffect cleanup runs BEFORE the component is removed from the DOM
+  // (unlike useEffect cleanup which runs after). This means we can set the
+  // guard flag before the browser emits the synthetic 'pause' event.
+  useLayoutEffect(() => {
+    isUnmountingRef.current = false
+    return () => {
+      isUnmountingRef.current = true
+      // Persist current file reference for session restoration on remount
+      if (file) _videoSession.file = file
+      // Only cancel the RAF draw loop — keep isRunningRef.current = true so
+      // the inference setTimeout chain continues running in the background.
+      if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null }
+    }
+  }, [file])
 
   // ── Custom seek bar ──────────────────────────────────────────────────────────
   const togglePlay = useCallback(() => {
@@ -1299,7 +1271,10 @@ function VideoUploadMode() {
     pendingFpsRef.current = 0
     pendingCondRef.current = 'S1_normal'
     pendingDetCountRef.current = 0
-    fileRef.current = f
+    // Persist immediately so remount after tab switch restores the file
+    _videoSession.file = f
+    _videoSession.currentTime = 0
+    _videoSession.wasPlaying = false
     setFile(f)
   }
 
@@ -1524,13 +1499,7 @@ function VideoUploadMode() {
                 >
                   {showHeatmap ? 'HIDE HEATMAP' : 'SHOW HEATMAP'}
                 </button>
-                <button className="det-reset-btn" onClick={() => {
-                  stopAll(true)
-                  fileRef.current = null
-                  _videoSession   = null   // user explicitly chose to change video
-                  setFile(null)
-                  setDetections([])
-                }}>
+                <button className="det-reset-btn" onClick={() => { stopAll(true); setFile(null); setDetections([]) }}>
                   CHANGE VIDEO
                 </button>
               </div>
@@ -1745,7 +1714,7 @@ export function LiveMode() {
           setInferError(null)
           pendingRef.current = data.detections
           pendingHeatmapRef.current = data.heatmap ?? null
-          pushDetections(data.detections, frameElapsed)
+          pushDetections(data.detections, frameElapsed, [], [], 0, data.condition)
 
           // Throttle React state updates to ≤ 1 Hz — canvas RAF loop draws at
           // full inference speed; sidebar counts don't need to update every frame.

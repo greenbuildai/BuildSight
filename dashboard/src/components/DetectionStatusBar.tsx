@@ -40,15 +40,15 @@ const DetectionStatusBar = memo(() => {
       </div>
       <span className="dsb-pct">{progressPercent}%</span>
 
-      {/* Metrics */}
-      <div className="dsb-metrics">
+      {/* Metrics — dimmed and frozen while paused */}
+      <div className={`dsb-metrics ${isPaused ? 'dsb-metrics--frozen' : ''}`}>
         <span className="dsb-metric">
           <span className="dsb-metric-label">FPS</span>
-          <span className="dsb-metric-value">{fps}</span>
+          <span className="dsb-metric-value">{isPaused ? '—' : fps}</span>
         </span>
         <span className="dsb-metric">
           <span className="dsb-metric-label">LAT</span>
-          <span className="dsb-metric-value">{Math.round(latencyMs)}ms</span>
+          <span className="dsb-metric-value">{isPaused ? '—' : `${Math.round(latencyMs)}ms`}</span>
         </span>
         <span className="dsb-metric">
           <span className="dsb-metric-label">WORKERS</span>

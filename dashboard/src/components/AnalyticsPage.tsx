@@ -16,6 +16,7 @@ interface ZoneRisk {
   risk_level: string
   risk_score: number
   activity: number
+  workers?: number
   violations?: number
   compliance_score?: number
 }
@@ -65,11 +66,11 @@ const DEMO_DATA: AnalyticsData = {
     { day: 'Sun', helmet_pct: 94, vest_pct: 90, workers: 30, violations: 6  },
   ],
   zone_risks: [
-    { zone_name: 'LOW RISK PARKING',        risk_score: 22, violations: 4,  workers: 31, compliance_score: 98 },
-    { zone_name: 'MODERATE RISK INTERIOR',  risk_score: 45, violations: 8,  workers: 18, compliance_score: 92 },
-    { zone_name: 'CRITICAL STAIRCASE',      risk_score: 78, violations: 19, workers: 12, compliance_score: 75 },
-    { zone_name: 'CAM-01 VIEW HEIGHT ZONE', risk_score: 65, violations: 14, workers: 22, compliance_score: 82 },
-    { zone_name: 'SCAFFOLD PERIMETER',      risk_score: 35, violations: 6,  workers: 15, compliance_score: 88 },
+    { zone_name: 'LOW RISK PARKING',        risk_level: 'LOW',      activity: 31, risk_score: 22, violations: 4,  workers: 31, compliance_score: 98 },
+    { zone_name: 'MODERATE RISK INTERIOR',  risk_level: 'MODERATE', activity: 18, risk_score: 45, violations: 8,  workers: 18, compliance_score: 92 },
+    { zone_name: 'CRITICAL STAIRCASE',      risk_level: 'CRITICAL', activity: 12, risk_score: 78, violations: 19, workers: 12, compliance_score: 75 },
+    { zone_name: 'CAM-01 VIEW HEIGHT ZONE', risk_level: 'HIGH',     activity: 22, risk_score: 65, violations: 14, workers: 22, compliance_score: 82 },
+    { zone_name: 'SCAFFOLD PERIMETER',      risk_level: 'MODERATE', activity: 15, risk_score: 35, violations: 6,  workers: 15, compliance_score: 88 },
   ],
   session: {
     frames_scanned: 0,
@@ -187,9 +188,8 @@ function RadarChart({ zones }: { zones: ZoneRisk[] }) {
       ))}
 
       {/* Labels */}
-      {zones.map((z, i) => {
+      {zones.map((_z, i) => {
         const angle = i * angleStep - Math.PI / 2
-        const isBottom = Math.sin(angle) > 0.5
         const isRight = Math.cos(angle) > 0.2
         const isLeft = Math.cos(angle) < -0.2
         
@@ -207,8 +207,8 @@ function RadarChart({ zones }: { zones: ZoneRisk[] }) {
           <text
             key={`label-${i}`}
             x={p.lx} y={p.ly}
-            textAnchor={anchor}
-            dominantBaseline={baseline}
+            textAnchor={anchor as 'middle' | 'start' | 'end'}
+            dominantBaseline={baseline as 'central' | 'auto' | 'hanging'}
             className="radar-label"
           >
             {p.label}

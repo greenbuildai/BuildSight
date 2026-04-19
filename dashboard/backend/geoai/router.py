@@ -444,7 +444,7 @@ async def spatial_vlm_query(request: SpatialVLMRequest):
             import sys
             root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../.."))
             if root_dir not in sys.path: sys.path.append(root_dir)
-            from main import global_intelligence
+            from main import global_intelligence  # type: ignore[import]
             frame = None
             if global_intelligence and global_intelligence.last_frame is not None:
                  frame = global_intelligence.last_frame.copy()

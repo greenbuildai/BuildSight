@@ -104,6 +104,11 @@
   flex-shrink: 0;
 }
 
+.dsb-metrics--frozen .dsb-metric-value {
+  color: #3a4050;
+  transition: color 0.2s ease;
+}
+
 .dsb-metric {
   display: flex;
   align-items: center;
