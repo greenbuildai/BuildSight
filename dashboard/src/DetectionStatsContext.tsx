@@ -73,7 +73,7 @@ export function useDetectionPipeline() {
 // Keep backward compatibility for existing code that uses useDetectionStats
 export const useDetectionStats = useDetectionPipeline
 
-export function DetectionPipelineProvider({ children }: { children: ReactNode }) {
+export function DetectionStatsProvider({ children }: { children: ReactNode }) {
   const [stats, setStats] = useState<DetectionStats>({ ...EMPTY })
   const [liveAlerts, setLiveAlerts] = useState<AlertItem[]>([])
   const { settings } = useSettings()
