@@ -136,7 +136,7 @@ function formatIstSnapshot() {
 
 function AppInner() {
   const { settings, update } = useSettings()
-  const { stats, liveAlerts, resetDetection: resetStats } = useDetectionStats()
+  const { stats, liveAlerts } = useDetectionStats()
   const connectDetection = useDetectionStore(s => s.connect)
   const [view, setView] = useState<View>('dashboard')
 
@@ -260,10 +260,7 @@ function AppInner() {
     document.documentElement.style.setProperty('--color-accent', settings.accentColor)
   }, [settings.accentColor])
 
-  // Reset stats when switching workspace modes (Live -> Video, etc)
-  useEffect(() => {
-    resetStats()
-  }, [dashboardMode, resetStats])
+  // Mode switches do NOT reset detection — background session persists across tabs
 
   const workspaceCopy: Record<DashboardMode, { label: string; title: string; meta: string }> = {
     LIVE: {

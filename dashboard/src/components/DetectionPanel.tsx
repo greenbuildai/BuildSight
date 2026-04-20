@@ -1,10 +1,10 @@
 import {
-  useRef, useState, useEffect, useLayoutEffect, useCallback, useMemo,
+  useRef, useState, useEffect, useCallback, useMemo,
 } from 'react'
 import { useDetectionPipeline, useDetectionStats } from '../DetectionStatsContext'
-import { useDetectionStore, type PeakRiskMoment } from '../store/detectionStore'
+import { useDetectionStore } from '../store/detectionStore'
 import { useSettings } from '../SettingsContext'
-import PPEStatusPanel, { type WorkerPPEStatus } from './PPEStatusPanel'
+import PPEStatusPanel from './PPEStatusPanel'
 import './DetectionPanel.css'
 
 const API = 'http://localhost:8000/api'
@@ -111,66 +111,6 @@ interface HeatmapPoint {
   type: 'worker' | 'violation'
   value: number
   riskLevel?: RiskLevel
-}
-
-function PeakRiskMomentsPanel({
-  moments,
-  onSelect,
-  emptyLabel,
-  className = '',
-}: {
-  moments: PeakRiskMoment[]
-  onSelect?: (moment: PeakRiskMoment) => void
-  emptyLabel: string
-  className?: string
-}) {
-  return (
-    <div className={`det-risk-sidebar ${className}`.trim()}>
-      <div className="det-risk-sidebar__header">
-        <span className="det-risk-sidebar__icon">⚠️</span>
-        PEAK RISK MOMENTS
-      </div>
-      <div className="det-risk-sidebar__list">
-        {moments.length === 0 ? (
-          <div className="det-risk-sidebar__empty">{emptyLabel}</div>
-        ) : (
-          moments.map((moment, idx) => {
-            const content = (
-              <>
-                <div className="det-risk-item__time">
-                  {onSelect ? _fmtTime(moment.time) : `LIVE CAPTURE #${idx + 1}`}
-                </div>
-                <div className="det-risk-item__meta">
-                  <span className="det-risk-item__label">{moment.type}</span>
-                  <span className="det-risk-item__score">
-                    {onSelect ? `Risk Level: ${moment.score}` : `RISK: ${moment.score}`}
-                  </span>
-                </div>
-              </>
-            )
-
-            if (!onSelect) {
-              return (
-                <div key={idx} className="det-risk-item det-risk-item--static">
-                  {content}
-                </div>
-              )
-            }
-
-            return (
-              <button
-                key={idx}
-                className="det-risk-item"
-                onClick={() => onSelect(moment)}
-              >
-                {content}
-              </button>
-            )
-          })
-        )}
-      </div>
-    </div>
-  )
 }
 
 function _boxIou(a: number[], b: number[]): number {
@@ -728,7 +668,6 @@ function VideoUploadMode() {
   // Use Zustand store as source of truth for the session
   const file = store.videoFile
   const isPlaying = store.isRunning && !store.isPaused
-  const isPaused = store.isPaused
   const currentTime = store.currentTime
   const duration = store.videoDuration
   
@@ -753,10 +692,6 @@ function VideoUploadMode() {
   const rafRef = useRef<number | null>(null)
   const tracksRef = useRef<Track[]>([])
 
-  // Dimensions of the inference frame (from store/backend)
-  const frameWRef = useRef(640)
-  const frameHRef = useRef(360)
-
   // ROI persists in store
   const roiPoly = store.roiPoly
 
@@ -771,18 +706,6 @@ function VideoUploadMode() {
   const videoUrl = useMemo(() => (file ? URL.createObjectURL(file) : null), [file])
   useEffect(() => () => { if (videoUrl) URL.revokeObjectURL(videoUrl) }, [videoUrl])
 
-  // ── ROI helpers ──────────────────────────────────────────────────────────────
-  // Point-in-polygon via ray-casting (works in any coord space)
-  const pointInRoi = useCallback((px: number, py: number, poly: [number, number][]): boolean => {
-    if (poly.length < 3) return true  // no valid polygon = pass everything
-    let inside = false
-    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
-      const [xi, yi] = poly[i], [xj, yj] = poly[j]
-      if (((yi > py) !== (yj > py)) && px < ((xj - xi) * (py - yi)) / (yj - yi) + xi)
-        inside = !inside
-    }
-    return inside
-  }, [])
 
   // ── Sync display video with pipeline state ──────────────────────────────────
   useEffect(() => {
@@ -1079,6 +1002,16 @@ function VideoUploadMode() {
                 className="det-video__player"
                 muted
                 playsInline
+                onLoadedMetadata={() => {
+                  const video = videoRef.current
+                  if (!video) return
+                  // Reconnect display video to the active background session position
+                  const target = useDetectionStore.getState().currentTime
+                  if (target > 0.5) video.currentTime = target
+                  if (useDetectionStore.getState().isRunning && !useDetectionStore.getState().isPaused) {
+                    video.play().catch(() => {})
+                  }
+                }}
               />
             )}
             <canvas
@@ -1231,8 +1164,6 @@ export function LiveMode() {
   const riskZonesRef = useRef<DetectionRiskZone[]>([])
   const frameWRef = useRef(1)
   const frameHRef = useRef(1)
-  // Throttle label/sidebar state updates to ≤ 1 Hz (same as VideoUploadMode)
-  const lastLabelUpdateRef = useRef<number>(0)
 
   useEffect(() => {
     configRef.current = { condition }

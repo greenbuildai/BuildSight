@@ -155,6 +155,18 @@ class BackgroundDetectionService:
         last_emit = 0.0
         conf_threshold = 0.25   # reasonable default; operator can tune via API
 
+        # GPU memory management
+        try:
+            import torch
+            _torch = torch
+        except ImportError:
+            _torch = None
+
+        _frame_skip_n = 2        # process 1 in every N frames (balanced GPU load)
+        _frame_skip_counter = 0
+        _cache_clear_every = 50  # call empty_cache every N processed frames
+        _processed_count = 0
+
         while not self._stop_event.is_set():
             if self.is_paused:
                 time.sleep(0.05)
@@ -172,6 +184,11 @@ class BackgroundDetectionService:
                 self.current_frame += 1
                 self.frame_count   += 1
 
+            # ── Frame skipping — reduces GPU pressure on heavy scenes ─────
+            _frame_skip_counter += 1
+            if _frame_skip_counter % _frame_skip_n != 0:
+                continue
+
             t0 = time.time()
 
             try:
@@ -183,8 +200,20 @@ class BackgroundDetectionService:
                     except Exception:
                         pass  # keep previous scene on error
 
+                # ── Resize frame to max 640px before inference ────────────
+                h, w = frame.shape[:2]
+                if max(h, w) > 640:
+                    scale = 640 / max(h, w)
+                    frame = cv2.resize(frame, (int(w * scale), int(h * scale)),
+                                      interpolation=cv2.INTER_LINEAR)
+
                 # ── Inference ─────────────────────────────────────────────
                 detections, _, _perf = self._inference(frame, scene, conf_threshold)
+
+                # ── Periodic GPU cache flush ──────────────────────────────
+                _processed_count += 1
+                if _torch is not None and _torch.cuda.is_available() and _processed_count % _cache_clear_every == 0:
+                    _torch.cuda.empty_cache()
 
                 workers = [d for d in detections if d.get("cls") == 0]
 

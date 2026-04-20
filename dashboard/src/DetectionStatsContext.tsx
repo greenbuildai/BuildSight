@@ -73,7 +73,7 @@ export function useDetectionPipeline() {
 // Keep backward compatibility for existing code that uses useDetectionStats
 export const useDetectionStats = useDetectionPipeline
 
-export function DetectionStatsProvider({ children }: { children: ReactNode }) {
+export function DetectionPipelineProvider({ children }: { children: ReactNode }) {
   const [stats, setStats] = useState<DetectionStats>({ ...EMPTY })
   const [liveAlerts, setLiveAlerts] = useState<AlertItem[]>([])
   const { settings } = useSettings()
@@ -181,8 +181,11 @@ export function DetectionStatsProvider({ children }: { children: ReactNode }) {
         if (cls === 'safety_vest' || cls === 'safety-vest' || cls === 'vest') vests++
       }
 
-      const effectiveWorkers = workers > 0 ? workers : Math.max(helmets, vests)
-      
+      // Prefer backend's valid_workers count — it's the authoritative spatially-mapped count
+      const effectiveWorkers = (validWorkers && validWorkers.length > 0)
+        ? validWorkers.length
+        : workers > 0 ? workers : Math.max(helmets, vests)
+
       setLiveAlerts(prev => appendDedupedAlerts(prev, buildLiveAlerts(detections, effectiveWorkers, helmets, vests)))
 
       setStats(prev => ({
@@ -191,8 +194,8 @@ export function DetectionStatsProvider({ children }: { children: ReactNode }) {
         helmetsDetected: helmets,
         vestsDetected: vests,
         proximityViolations: violations?.length ?? prev.proximityViolations,
-        avgConfidence: detections.length > 0 
-          ? detections.reduce((sum, d) => sum + d.confidence, 0) / detections.length 
+        avgConfidence: detections.length > 0
+          ? detections.reduce((sum, d) => sum + d.confidence, 0) / detections.length
           : prev.avgConfidence,
         elapsedMs,
         framesScanned: prev.framesScanned + 1,
