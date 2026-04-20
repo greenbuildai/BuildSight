@@ -691,11 +691,14 @@ function VideoUploadMode() {
   const inputRef = useRef<HTMLInputElement>(null)
   const rafRef = useRef<number | null>(null)
   const tracksRef = useRef<Track[]>([])
+  const showHeatmapRef = useRef(false)  // updated by effect below
 
   // ROI persists in store
   const roiPoly = store.roiPoly
 
   const heatmapHistoryRef = useRef<HeatmapPoint[]>([])
+
+  useEffect(() => { showHeatmapRef.current = showHeatmap }, [showHeatmap])
 
   useEffect(() => {
     // Persist user preference to sessionStorage
@@ -725,37 +728,55 @@ function VideoUploadMode() {
     video.currentTime = store.currentTime
   }, [store.currentTime])
 
-  // ── RAF draw loop ────────────────────────────────────────────────────────────
+  // ── Stable RAF draw loop ─────────────────────────────────────────────────────
+  // Uses refs and getState() so the callback never needs to be recreated.
+  // Starts on mount (if playing) and stops on unmount.
   const drawOverlay = useCallback(() => {
+    rafRef.current = null
     const canvas = overlayRef.current
     const video = videoRef.current
-    if (!canvas || !video) return
+    if (!canvas || !video) {
+      rafRef.current = requestAnimationFrame(drawOverlay)
+      return
+    }
 
-    const dw = video.clientWidth
-    const dh = video.clientHeight
-    if (canvas.width !== dw) canvas.width = dw
-    if (canvas.height !== dh) canvas.height = dh
+    const dw = video.clientWidth || canvas.width
+    const dh = video.clientHeight || canvas.height
+    if (dw > 0 && (canvas.width !== dw || canvas.height !== dh)) {
+      canvas.width = dw
+      canvas.height = dh
+    }
 
-    const ctx = canvas.getContext('2d')!
-    ctx.clearRect(0, 0, dw, dh)
+    const ctx = canvas.getContext('2d')
+    if (!ctx) { rafRef.current = requestAnimationFrame(drawOverlay); return }
+    ctx.clearRect(0, 0, canvas.width, canvas.height)
 
-    const { rw, rh, ox, oy } = _letterbox(video.videoWidth, video.videoHeight, dw, dh)
-    
-    // We use a fixed 640x360 for internal detection coords matching the background capture
-    const fw = 640
-    const fh = 360
+    const { rw, rh, ox, oy } = _letterbox(video.videoWidth, video.videoHeight, canvas.width, canvas.height)
 
-    // ── Draw ROI ───────────────────────────────────────────────────────────
-    if (roiPoly && roiPoly.length >= 2) {
+    // Compute inference frame dimensions matching DetectionStatsContext (max 640 on longest side)
+    const MAX_INFER = 640
+    const vw = video.videoWidth  || 640
+    const vh = video.videoHeight || 360
+    const inferScale = Math.min(1, MAX_INFER / Math.max(vw, vh, 1))
+    const fw = Math.max(1, Math.round(vw * inferScale))
+    const fh = Math.max(1, Math.round(vh * inferScale))
+
+    // Always read fresh state to avoid stale closure issues
+    const st = useDetectionStore.getState()
+    const currentDetections = st.detections
+    const currentRoiPoly = st.roiPoly
+
+    // ── Draw ROI ─────────────────────────────────────────────────────────────
+    if (currentRoiPoly && currentRoiPoly.length >= 2) {
       ctx.save()
       ctx.strokeStyle = '#ffcc00'
       ctx.lineWidth = 2
       ctx.setLineDash([6, 4])
       ctx.beginPath()
-      const [px0, py0] = roiPoly[0]
+      const [px0, py0] = currentRoiPoly[0]
       ctx.moveTo(px0 * rw + ox, py0 * rh + oy)
-      for (let i = 1; i < roiPoly.length; i++) {
-        const [pxi, pyi] = roiPoly[i]
+      for (let i = 1; i < currentRoiPoly.length; i++) {
+        const [pxi, pyi] = currentRoiPoly[i]
         ctx.lineTo(pxi * rw + ox, pyi * rh + oy)
       }
       ctx.closePath()
@@ -765,25 +786,22 @@ function VideoUploadMode() {
       ctx.restore()
     }
 
-    // ── Draw Heatmap ────────────────────────────────────────────────────────
-    if (showHeatmap && heatmapHistoryRef.current.length > 0) {
+    // ── Draw Heatmap ─────────────────────────────────────────────────────────
+    if (showHeatmapRef.current && heatmapHistoryRef.current.length > 0) {
       heatmapHistoryRef.current = drawHeatmap(ctx, heatmapHistoryRef.current, performance.now(), rw, rh, ox, oy)
     }
 
-    // ── Update Tracks from Global Store ──────────────────────────────────────
-    const currentDetections = store.detections
-    // If store has new detections, merge them into our local lerped tracks
-    // For simplicity in this refactor, we just use the store detections directly for now
-    // but we can re-add lerping if needed. The store updates at ~10Hz.
-    
-    const LERP = 0.60
+    // ── Bounding box tracks ───────────────────────────────────────────────────
     const activeTracks = mergeTracks(tracksRef.current, currentDetections)
     tracksRef.current = activeTracks
 
+    const LERP = 0.55
     for (const t of activeTracks) {
       const [x1, y1, x2, y2] = t.frameBox
-      const tx1 = (x1 / fw) * rw + ox, ty1 = (y1 / fh) * rh + oy
-      const tx2 = (x2 / fw) * rw + ox, ty2 = (y2 / fh) * rh + oy
+      const tx1 = (x1 / fw) * rw + ox
+      const ty1 = (y1 / fh) * rh + oy
+      const tx2 = (x2 / fw) * rw + ox
+      const ty2 = (y2 / fh) * rh + oy
 
       if (!t.initialized) {
         t.sx1 = tx1; t.sy1 = ty1; t.sx2 = tx2; t.sy2 = ty2
@@ -795,44 +813,61 @@ function VideoUploadMode() {
         t.sy2 += (ty2 - t.sy2) * LERP
       }
 
-      ctx.globalAlpha = t.missed > 0 ? 0.45 : 1.0
-      const col = resolveCssVar(CLASS_COLORS[t.cls] ?? '#aaaaaa')
       const isWorkerBox = t.cls === 'worker' || t.cls === 'person'
-      let borderCol = col
-
+      let borderCol = CLASS_COLORS[t.cls] ?? '#aaaaaa'
       if (isWorkerBox) {
         if (t.has_helmet === true && t.has_vest === true) {
-          borderCol = '#0088ff'
-        } else if (t.has_helmet === false || t.has_vest === false) {
-          borderCol = '#ffaa00'
+          borderCol = '#00c864'   // green — compliant
+        } else if (t.has_helmet === false && t.has_vest === false) {
+          borderCol = '#ff2a2a'   // red — full violation
+        } else {
+          borderCol = '#ffaa00'   // orange — partial
         }
       }
 
+      ctx.globalAlpha = t.missed > 0 ? 0.4 : 1.0
+      ctx.shadowColor = borderCol
+      ctx.shadowBlur = isWorkerBox ? 8 : 4
       ctx.strokeStyle = borderCol
-      ctx.lineWidth = isWorkerBox ? 3 : 2.5
+      ctx.lineWidth = isWorkerBox ? 3 : 2
       ctx.strokeRect(t.sx1, t.sy1, t.sx2 - t.sx1, t.sy2 - t.sy1)
+      ctx.shadowBlur = 0
 
-      const label = `${t.cls} ${(t.confidence * 100).toFixed(0)}%`
-      ctx.font = 'bold 11px monospace'
+      const helmBadge = isWorkerBox ? (t.has_helmet === false ? ' ⚠H' : '') : ''
+      const vestBadge = isWorkerBox ? (t.has_vest   === false ? ' ⚠V' : '') : ''
+      const label = isWorkerBox
+        ? `W ${(t.confidence * 100).toFixed(0)}%${helmBadge}${vestBadge}`
+        : `${t.cls} ${(t.confidence * 100).toFixed(0)}%`
+      ctx.font = 'bold 10px monospace'
       const tw = ctx.measureText(label).width
       ctx.fillStyle = borderCol
-      ctx.fillRect(t.sx1, t.sy1 - 17, tw + 8, 17)
-      ctx.fillStyle = '#000000'
-      ctx.fillText(label, t.sx1 + 4, t.sy1 - 3)
+      ctx.globalAlpha = t.missed > 0 ? 0.3 : 0.88
+      ctx.fillRect(t.sx1, Math.max(0, t.sy1 - 16), tw + 8, 16)
       ctx.globalAlpha = 1
+      ctx.fillStyle = isWorkerBox ? '#000' : '#fff'
+      ctx.fillText(label, t.sx1 + 4, Math.max(12, t.sy1 - 3))
     }
 
     rafRef.current = requestAnimationFrame(drawOverlay)
-  }, [store.detections, roiPoly, showHeatmap])
+  }, []) // stable — reads all live state via refs / getState()
 
+  // Start/stop the RAF based on play state; restarts cleanly after tab remount
   useEffect(() => {
     if (isPlaying) {
-      rafRef.current = requestAnimationFrame(drawOverlay)
+      if (!rafRef.current) {
+        rafRef.current = requestAnimationFrame(drawOverlay)
+      }
     } else {
-      if (rafRef.current) cancelAnimationFrame(rafRef.current)
+      if (rafRef.current) {
+        cancelAnimationFrame(rafRef.current)
+        rafRef.current = null
+      }
     }
     return () => {
-      if (rafRef.current) cancelAnimationFrame(rafRef.current)
+      if (rafRef.current) {
+        cancelAnimationFrame(rafRef.current)
+        rafRef.current = null
+      }
     }
   }, [isPlaying, drawOverlay])
 

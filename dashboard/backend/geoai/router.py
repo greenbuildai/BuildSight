@@ -169,12 +169,31 @@ def _save_zones(zones: List[DynamicZone]) -> None:
 
 # ── Helpers to pull current detection stats from server.py ──────────────────
 def _get_fallback_stats() -> dict:
-    """Pull live stats from the detection server's shared state if available."""
+    """Pull live stats from detection_stats and background service."""
     try:
-        # server.py exposes `detection_stats` at module level
         import server as srv  # type: ignore
-        s = getattr(srv, "detection_stats", {})
-        return dict(s) if s else {}
+        stats = dict(getattr(srv, "detection_stats", {}) or {})
+
+        # Also read from background service — it may be more current
+        bg = getattr(srv, "bg_service", None)
+        if bg and getattr(bg, "is_running", False):
+            bg_count = getattr(bg, "latest_worker_count", 0)
+            if bg_count > stats.get("total_workers", 0):
+                positions = getattr(bg, "worker_positions", [])
+                stats["total_workers"]    = bg_count
+                stats["helmets_detected"] = sum(1 for w in positions if w.get("has_helmet"))
+                stats["vests_detected"]   = sum(1 for w in positions if w.get("has_vest"))
+                stats["scene"]            = getattr(bg, "latest_scene", stats.get("scene", "S1_normal"))
+                violations = getattr(bg, "active_violations", [])
+                stats["proximity_violations"] = len(violations)
+                # Summarise violations for richer rule-based output
+                ppe_viols = [v for v in violations if "PPE" in v.get("type", "")]
+                zone_viols = [v for v in violations if "ZONE" in v.get("type", "") or "GEOFENCE" in v.get("type", "")]
+                if ppe_viols:
+                    stats["ppe_violation_detail"] = f"{len(ppe_viols)} PPE violation{'s' if len(ppe_viols)!=1 else ''}"
+                if zone_viols:
+                    stats["zone_breach_detail"] = f"{len(zone_viols)} restricted zone breach{'es' if len(zone_viols)!=1 else ''}"
+        return stats
     except Exception:
         return {}
 

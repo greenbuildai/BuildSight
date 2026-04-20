@@ -90,9 +90,9 @@ class SpatialMapper:
             wx = (px / self.frame_w) * self.site["width_m"]
             wy = (1.0 - py / self.frame_h) * self.site["depth_m"]
 
-        # Clamp to site boundaries
-        wx = max(-5, min(self.site["width_m"] + 5, wx))
-        wy = max(-5, min(self.site["depth_m"] + 5, wy))
+        # Clamp strictly to site boundary — no margin outside
+        wx = max(0.0, min(self.site["width_m"], wx))
+        wy = max(0.0, min(self.site["depth_m"], wy))
         return wx, wy
 
     def world_to_gps(self, wx: float, wy: float) -> Tuple[float, float]:

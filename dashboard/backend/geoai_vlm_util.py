@@ -30,7 +30,7 @@ log = logging.getLogger("BuildSight.VLM")
 # ── Config ───────────────────────────────────────────────────────────────────
 VLM_MODEL_ID = "vikhyatk/moondream2"
 VLM_REVISION = "2024-08-26"
-VLM_CACHE_TTL_S = 10.0
+VLM_CACHE_TTL_S = 6.0
 
 DEFAULT_QUESTION = (
     "Describe the construction site activity in this image. "
@@ -182,39 +182,50 @@ def describe_frame_sync(
 
 
 def _rule_based_description(stats: Dict) -> str:
-    """Generate plausible text from detection counts when the VLM is not available."""
+    """Generate a live site status summary from detection counts."""
     workers = stats.get("total_workers", 0) or stats.get("active_workers", 0)
     helmets = stats.get("helmets_detected", 0)
-    vests = stats.get("vests_detected", 0)
+    vests   = stats.get("vests_detected", 0)
     violations = stats.get("proximity_violations", 0)
-    scene = stats.get("scene", "S1_normal")
+    scene   = stats.get("scene", "S1_normal")
     avg_risk = stats.get("avg_site_risk", 0.0)
+    ppe_detail  = stats.get("ppe_violation_detail", "")
+    zone_detail = stats.get("zone_breach_detail", "")
 
     if workers == 0:
-        return "No workers currently detected on site. Site appears clear."
+        scene_note = ""
+        if "S2" in scene:
+            scene_note = " Dusty visibility conditions active."
+        elif "S3" in scene:
+            scene_note = " Low-light conditions — visibility reduced."
+        return f"No workers currently detected on site. Site appears clear.{scene_note}"
 
     helmet_pct = int(helmets / max(workers, 1) * 100)
-    vest_pct = int(vests / max(workers, 1) * 100)
-    parts = [f"{workers} worker{'s' if workers != 1 else ''} detected on site."]
+    vest_pct   = int(vests   / max(workers, 1) * 100)
+    parts = [f"{workers} worker{'s' if workers != 1 else ''} active on site."]
 
     if helmet_pct == 100:
         parts.append("All workers wearing helmets.")
     elif helmet_pct >= 80:
         parts.append(f"Helmet compliance: {helmet_pct}%.")
     else:
-        parts.append(
-            f"Low helmet compliance — only {helmet_pct}% of workers wearing helmets."
-        )
+        missing = workers - helmets
+        parts.append(f"{missing} worker{'s' if missing != 1 else ''} missing helmet — {helmet_pct}% compliance.")
 
-    if vest_pct < 60:
-        parts.append(f"Safety vests missing on {100 - vest_pct}% of workers.")
-    elif vest_pct < 100:
+    if vest_pct == 100:
+        parts.append("All workers wearing high-vis vests.")
+    elif vest_pct < 60:
+        missing_v = workers - vests
+        parts.append(f"{missing_v} worker{'s' if missing_v != 1 else ''} missing vest — {vest_pct}% compliance.")
+    else:
         parts.append(f"Vest compliance: {vest_pct}%.")
 
-    if violations > 0:
-        parts.append(
-            f"{violations} proximity violation{'s' if violations != 1 else ''} detected."
-        )
+    if ppe_detail:
+        parts.append(ppe_detail + " flagged.")
+    if zone_detail:
+        parts.append(zone_detail + " detected — immediate action required.")
+    elif violations > 0:
+        parts.append(f"{violations} zone violation{'s' if violations != 1 else ''} active.")
 
     if "S4" in scene:
         parts.append("Crowded site — elevated density monitoring active.")
@@ -224,9 +235,9 @@ def _rule_based_description(stats: Dict) -> str:
         parts.append("Dusty conditions — PPE verification confidence reduced.")
 
     if avg_risk > 0.7:
-        parts.append("Overall site risk is HIGH.")
+        parts.append("Overall site risk: HIGH.")
     elif avg_risk > 0.4:
-        parts.append("Moderate site risk level.")
+        parts.append("Moderate overall risk level.")
 
     return " ".join(parts)
 

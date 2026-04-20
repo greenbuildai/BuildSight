@@ -655,10 +655,12 @@ export function GeoAIMap({
   }, [data, showHeatmap, normalizeLatLng, detectionWorkers])
 
   useEffect(() => {
-    if (!mapRef.current || !workersLayerRef.current || !data?.workers || !geoData) return
+    if (!mapRef.current || !workersLayerRef.current) return
     workersLayerRef.current.clearLayers()
 
-    if (!showWorkers) return
+    // When live detection workers are present, the detectionWorkersLayer already
+    // shows them as color-coded W markers. Hide the WebSocket demo workers to avoid overlap.
+    if (!showWorkers || !data?.workers || !geoData || detectionWorkers.length > 0) return
 
     data.workers.forEach(w => {
       // 1. Spatial Guard: Only show workers within defined zones or site perimeter
@@ -720,7 +722,7 @@ export function GeoAIMap({
 
       workersLayerRef.current!.addLayer(marker)
     })
-  }, [data, showWorkers, normalizeLatLng])
+  }, [data, showWorkers, normalizeLatLng, detectionWorkers])
 
   // ── Live detection worker markers (from background detection service) ──
   useEffect(() => {
