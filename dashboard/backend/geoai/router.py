@@ -157,6 +157,12 @@ def _save_zones(zones: List[DynamicZone]) -> None:
         _ZONES_FILE.write_text(
             json.dumps([z.model_dump() for z in zones], indent=2)
         )
+        # Bust spatial mapper zone cache so next inference picks up new zones immediately
+        try:
+            import server as _srv  # type: ignore
+            _srv.spatial_mapper.last_refresh = 0
+        except Exception:
+            pass
     except Exception as exc:
         log.error("Could not persist dynamic_zones.json: %s", exc)
 

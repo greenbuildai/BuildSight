@@ -92,6 +92,33 @@ export function GeoAIPage() {
   const [dynamicZones, setDynamicZones] = useState<DynamicZone[]>([])
   const [isZoneFormOpen, setIsZoneFormOpen] = useState(false)
 
+  // ── VLM Scene Narration ─────────────────────────────────────────────────────
+  const [vlmEntry, setVlmEntry] = useState<{ description: string; source: string; timestamp: number; question: string; vlm_available: boolean } | null>(null)
+  const [vlmLoading, setVlmLoading] = useState(false)
+  const [vlmQuestion, setVlmQuestion] = useState('')
+
+  const fetchVlm = (question?: string) => {
+    setVlmLoading(true)
+    const req = question
+      ? fetch('http://localhost:8000/api/geoai/vlm/query', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ question, force_refresh: true }),
+        })
+      : fetch('http://localhost:8000/api/geoai/vlm/latest')
+    req
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d) setVlmEntry(d) })
+      .catch(() => {})
+      .finally(() => setVlmLoading(false))
+  }
+
+  useEffect(() => {
+    fetchVlm()
+    const id = setInterval(() => fetchVlm(), 30_000)
+    return () => clearInterval(id)
+  }, [])
+
   // Load zones from backend on mount so map always shows persisted zones
   useEffect(() => {
     const load = () =>
@@ -412,9 +439,33 @@ export function GeoAIPage() {
               statusData={statusData}
             />
 
+            {/* ── VLM Scene Narration ── */}
+            <div className="geoai-command-card" style={{ padding: '1rem', borderBottom: '1px solid var(--color-border)', background: 'rgba(10,12,16,0.6)' }}>
+              <p className="geoai-command-card__eyebrow" style={{ marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <span>AI Scene Analysis</span>
+                {vlmEntry && <span style={{ fontSize: '10px', padding: '2px 6px', borderRadius: 4, background: vlmEntry.source === 'moondream2' ? 'rgba(0,200,100,0.15)' : 'rgba(255,200,0,0.15)', color: vlmEntry.source === 'moondream2' ? '#00c864' : '#ffd600' }}>{vlmEntry.source === 'moondream2' ? 'VLM' : 'Rule-based'}</span>}
+                {vlmLoading && <span style={{ fontSize: '10px', color: 'var(--color-muted)' }}>updating…</span>}
+              </p>
+              <p style={{ fontSize: '12px', lineHeight: 1.5, color: 'var(--color-text)', margin: '0 0 0.7rem', minHeight: '3em' }}>
+                {vlmEntry ? vlmEntry.description : 'Awaiting scene frame…'}
+              </p>
+              <form
+                onSubmit={e => { e.preventDefault(); if (vlmQuestion.trim()) { fetchVlm(vlmQuestion); setVlmQuestion('') } }}
+                style={{ display: 'flex', gap: '0.4rem' }}
+              >
+                <input
+                  value={vlmQuestion}
+                  onChange={e => setVlmQuestion(e.target.value)}
+                  placeholder="Ask about this scene…"
+                  style={{ flex: 1, fontSize: '11px', padding: '4px 8px', borderRadius: 4, border: '1px solid var(--color-border)', background: 'var(--color-surface)', color: 'var(--color-text)' }}
+                />
+                <button type="submit" disabled={vlmLoading || !vlmQuestion.trim()} style={{ fontSize: '11px', padding: '4px 10px', borderRadius: 4, background: 'var(--color-primary)', color: '#fff', border: 'none', cursor: 'pointer', opacity: vlmLoading || !vlmQuestion.trim() ? 0.5 : 1 }}>Ask</button>
+              </form>
+            </div>
+
             <div className="geoai-command-card" style={{ padding: '1rem', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-              <DynamicZoneEditor 
-                onZonesChange={setDynamicZones} 
+              <DynamicZoneEditor
+                onZonesChange={setDynamicZones}
                 isFormOpen={isZoneFormOpen}
                 onFormToggle={setIsZoneFormOpen}
               />

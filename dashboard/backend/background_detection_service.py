@@ -221,8 +221,8 @@ class BackgroundDetectionService:
                 worker_positions = []
                 for i, w in enumerate(workers):
                     box = w.get("box", [0, 0, 0, 0])
-                    cx  = (box[0] + box[2]) / 2
-                    cy  = (box[1] + box[3]) / 2
+                    cx  = (box[0] + box[2]) / 2  # horizontal center
+                    cy  = box[3]                   # foot point: bottom of bbox
                     pos = self._projector.pixel_to_world(cx, cy, frame.shape)
 
                     worker_positions.append({

@@ -306,37 +306,51 @@ class SpatialMapper(BaseSpatialMapper):
     def refresh_if_needed(self):
         if time.time() - self.last_refresh < self.refresh_interval:
             return
-        
+
+        new_zones = []
+
+        # 1. Zones from geo_zones DB table
         try:
             conn = database.get_db_connection()
             cursor = conn.cursor()
             cursor.execute("SELECT name, geojson, risk_level FROM geo_zones")
             rows = cursor.fetchall()
-            
-            new_zones = []
             for r in rows:
                 try:
                     g_data = json.loads(r['geojson'])
-                    # Handle both Feature and Geometry types
                     geom_data = g_data['geometry'] if 'geometry' in g_data else g_data
                     geom = shape(geom_data)
-                    new_zones.append({
-                        "name": r['name'],
-                        "geom": geom,
-                        "area": geom.area,
-                        "risk": r['risk_level']
-                    })
+                    new_zones.append({"name": r['name'], "geom": geom, "area": geom.area, "risk": r['risk_level']})
                 except Exception as e:
-                    logger.warning(f"SpatialMapper: Failed parsing zone {r['name']}: {e}")
-            
-            # Smallest area first → first match is the most specific zone
-            new_zones.sort(key=lambda x: x['area'])
-            self.zones = new_zones
-            self.last_refresh = time.time()
+                    logger.warning(f"SpatialMapper: Failed parsing DB zone {r['name']}: {e}")
             conn.close()
-            logger.info(f"SpatialMapper: Refreshed {len(self.zones)} zones")
         except Exception as e:
-            logger.error(f"SpatialMapper: Refresh failed: {e}")
+            logger.error(f"SpatialMapper: DB refresh failed: {e}")
+
+        # 2. Operator-drawn dynamic zones from dynamic_zones.json
+        try:
+            import pathlib
+            from shapely.geometry import Polygon as _DynPoly
+            dz_path = pathlib.Path(__file__).parent / "dynamic_zones.json"
+            if dz_path.exists():
+                dz_data = json.loads(dz_path.read_text())
+                for z in dz_data:
+                    if not z.get('is_active', True):
+                        continue
+                    coords = z.get('coordinates', [])
+                    if len(coords) >= 3:
+                        ring = coords if coords[0] == coords[-1] else coords + [coords[0]]
+                        geom = _DynPoly(ring)  # coords are [lng, lat] → Shapely (x=lng, y=lat)
+                        if geom.is_valid:
+                            new_zones.append({"name": z['name'], "geom": geom, "area": geom.area, "risk": z.get('risk_level', 'low')})
+        except Exception as e:
+            logger.error(f"SpatialMapper: Dynamic zones refresh failed: {e}")
+
+        # Smallest area first → first match is most specific zone
+        new_zones.sort(key=lambda x: x['area'])
+        self.zones = new_zones
+        self.last_refresh = time.time()
+        logger.info(f"SpatialMapper: Refreshed {len(self.zones)} zones")
 
     def get_zone_for_box(self, box, img_w, img_h):
         """
@@ -346,20 +360,23 @@ class SpatialMapper(BaseSpatialMapper):
         if not shapely or not self.zones:
             return "General Site", "Low"
 
-        # Center point in pixels
+        # Use foot point (bottom-center) — where the worker stands
         cx = (box[0] + box[2]) / 2
-        cy = (box[1] + box[3]) / 2
-        
-        # We need to decide if zones are stored in pixels or 0-1 normalized
-        # Typically GeoAI zones are normalized 0-100 or 0-1.
-        # Assuming 0-1 normalization for zones based on common BuildSight patterns
-        nx, ny = cx / img_w, cy / img_h
-        p = Point(nx, ny)
-        
+        cy = box[3]
+
+        # Convert to GPS; zones are stored in lat/lon (GeoJSON [lng, lat] order)
+        orig_w, orig_h = self.frame_w, self.frame_h
+        self.frame_w, self.frame_h = img_w, img_h
+        lat, lng = self.pixel_to_gps(cx, cy)
+        self.frame_w, self.frame_h = orig_w, orig_h
+
+        # Shapely Point(x, y) = Point(lng, lat) — matches GeoJSON zone coords
+        p = Point(lng, lat)
+
         for z in self.zones:
             if z['geom'].contains(p):
                 return z['name'], z['risk']
-        
+
         return "General Site", "Low"
 
 spatial_mapper = SpatialMapper()
@@ -2484,11 +2501,10 @@ async def detect_frame(
         for vt in vtypes:
             violation_stats[vt] = violation_stats.get(vt, 0) + 1
             
-        # Calculate spatial coordinates for GeoAI map
+        # Calculate spatial coordinates for GeoAI map — use foot point (bottom-center)
         bw = d["box"]
-        cx, cy = (bw[0] + bw[2]) / 2, (bw[1] + bw[3]) / 2
-        
-        # pixel_to_gps returns (lat, lng)
+        cx = (bw[0] + bw[2]) / 2  # horizontal center
+        cy = bw[3]                  # bottom of bbox = where worker stands
         lat, lng = spatial_mapper.pixel_to_gps(cx, cy)
         
         # Get UTM for the popup detail

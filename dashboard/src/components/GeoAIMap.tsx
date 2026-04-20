@@ -298,22 +298,21 @@ export function GeoAIMap({
 
     if (window.HeatmapOverlay) {
       const heatLayer = new window.HeatmapOverlay({
-        radius: 25,
+        radius: 40,
         maxOpacity: heatmapOpacity,
-        minOpacity: 0.08,
-        blur: 0.85,
+        minOpacity: 0.15,
+        blur: 0.75,
         scaleRadius: false,
         useLocalExtrema: false,
         latField: 'lat',
         lngField: 'lng',
         valueField: 'value',
         gradient: {
-          '0.0': '#000000',
-          '0.2': '#00e5ff',
-          '0.4': '#00ff88',
-          '0.6': '#ffd600',
-          '0.8': '#ff8c00',
-          '1.0': '#ff2a2a',
+          '0.0': 'rgba(0,200,100,0)',
+          '0.3': 'rgba(0,200,100,0.8)',
+          '0.55': 'rgba(255,214,0,0.9)',
+          '0.75': 'rgba(255,140,0,0.95)',
+          '1.0': 'rgba(255,30,30,1)',
         },
       })
       map.addLayer(heatLayer as any)
@@ -583,45 +582,44 @@ export function GeoAIMap({
   // Remove old granular visibility effects as they are now handled by the unified rendering effect
 
   useEffect(() => {
-    if (!heatLayerRef.current || !data) return
+    if (!heatLayerRef.current) return
     if (!showHeatmap) {
       heatLayerRef.current.setData({ min: 0, max: 1, data: [] })
       return
     }
 
-    if (data.heatmap) {
+    // Priority 1: WebSocket spatial engine grid data
+    if (data?.heatmap) {
       const { cols, rows, resolution_m, data: gridData } = data.heatmap
       const hmData = []
-
       const angleRad = (85.0 * Math.PI) / 180
       const cosA = Math.cos(angleRad)
       const sinA = Math.sin(angleRad)
-
       const siteSwLat = 10.81658333
       const siteSwLon = 78.66873333
       const mLat = 110574.0
       const mLon = 111319.0 * Math.cos((siteSwLat * Math.PI) / 180)
-
       for (let r = 0; r < rows; r++) {
         for (let c = 0; c < cols; c++) {
           const value = gridData[r * cols + c]
           if (value > 0.05) {
             const wx = c * resolution_m + resolution_m / 2
             const wy = r * resolution_m + resolution_m / 2
-
             const rx = wx * cosA - wy * sinA
             const ry = wx * sinA + wy * cosA
-
             const lat = siteSwLat + ry / mLat
             const lon = siteSwLon + rx / mLon
-
             const [nLat, nLng] = normalizeLatLng([lat, lon])
             hmData.push({ lat: nLat, lng: nLng, value })
           }
         }
       }
       heatLayerRef.current.setData({ min: 0, max: 1, data: hmData })
-    } else if (data.cells) {
+      return
+    }
+
+    // Priority 2: WebSocket cell data
+    if (data?.cells) {
       const hmData = {
         min: 0,
         max: 1,
@@ -633,8 +631,28 @@ export function GeoAIMap({
           }),
       }
       heatLayerRef.current.setData(hmData)
+      return
     }
-  }, [data, showHeatmap, normalizeLatLng])
+
+    // Priority 3: Live detection workers — generate risk-weighted heat points
+    if (detectionWorkers.length > 0) {
+      const hmData = detectionWorkers
+        .filter(w => w.lat && w.lng && !isNaN(w.lat) && !isNaN(w.lng))
+        .map(w => {
+          // Risk score: non-compliant=1.0, partial=0.65, compliant=0.35
+          const score = !w.ppe_compliant
+            ? (w.has_helmet === false && w.has_vest === false ? 1.0 : 0.75)
+            : 0.35
+          const [lat, lng] = normalizeLatLng([w.lat, w.lng])
+          return { lat, lng, value: score }
+        })
+      heatLayerRef.current.setData({ min: 0, max: 1, data: hmData })
+      return
+    }
+
+    // No data available — clear
+    heatLayerRef.current.setData({ min: 0, max: 1, data: [] })
+  }, [data, showHeatmap, normalizeLatLng, detectionWorkers])
 
   useEffect(() => {
     if (!mapRef.current || !workersLayerRef.current || !data?.workers || !geoData) return
