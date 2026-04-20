@@ -1,4 +1,24 @@
-import { useState, useEffect, useMemo, type CSSProperties } from 'react'
+import { useState, useEffect, useMemo, type CSSProperties, Component, type ReactNode, type ErrorInfo } from 'react'
+
+class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
+  state = { error: null }
+  static getDerivedStateFromError(error: Error) { return { error } }
+  componentDidCatch(error: Error, info: ErrorInfo) { console.error('[BuildSight] Render error:', error, info) }
+  render() {
+    if (this.state.error) {
+      return (
+        <div style={{ color: '#ff4444', background: '#0a0c12', minHeight: '100vh', padding: '2rem', fontFamily: 'monospace', fontSize: '14px' }}>
+          <h2 style={{ color: '#ff6666' }}>BuildSight — Render Error</h2>
+          <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{String(this.state.error)}</pre>
+          <button onClick={() => this.setState({ error: null })} style={{ marginTop: '1rem', padding: '0.5rem 1rem', background: '#1a2030', color: '#fff', border: '1px solid #334', borderRadius: '4px', cursor: 'pointer' }}>
+            Retry
+          </button>
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
 import { AnimatePresence } from 'framer-motion'
 import './App.css'
 import { AlertLog, type AlertItem } from './components/AlertLog'
@@ -116,7 +136,7 @@ function formatIstSnapshot() {
 
 function AppInner() {
   const { settings, update } = useSettings()
-  const { stats, liveAlerts, resetStats } = useDetectionStats()
+  const { stats, liveAlerts, resetDetection: resetStats } = useDetectionStats()
   const connectDetection = useDetectionStore(s => s.connect)
   const [view, setView] = useState<View>('dashboard')
 
@@ -596,11 +616,17 @@ function AppInner() {
 
 function App() {
 return (
-  <SettingsProvider>
-    <DetectionStatsProvider>
-      <AppInner />
-    </DetectionStatsProvider>
-  </SettingsProvider>
+  <ErrorBoundary>
+    <SettingsProvider>
+      <ErrorBoundary>
+        <DetectionStatsProvider>
+          <ErrorBoundary>
+            <AppInner />
+          </ErrorBoundary>
+        </DetectionStatsProvider>
+      </ErrorBoundary>
+    </SettingsProvider>
+  </ErrorBoundary>
 )
 }
 

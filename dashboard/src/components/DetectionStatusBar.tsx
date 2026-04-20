@@ -7,6 +7,7 @@
 
 import { memo } from 'react'
 import { useDetectionStore } from '../store/detectionStore'
+import { useDetectionPipeline } from '../DetectionStatsContext'
 import './DetectionStatusBar.css'
 
 const DetectionStatusBar = memo(() => {
@@ -14,24 +15,71 @@ const DetectionStatusBar = memo(() => {
   const isPaused        = useDetectionStore(s => s.isPaused)
   const isConnected     = useDetectionStore(s => s.isConnected)
   const fps             = useDetectionStore(s => s.fps)
+  const procRate        = useDetectionStore(s => s.processingRate)
   const latencyMs       = useDetectionStore(s => s.latencyMs)
   const workerCount     = useDetectionStore(s => s.workerCount)
   const sceneCondition  = useDetectionStore(s => s.sceneCondition)
   const progressPercent = useDetectionStore(s => s.progressPercent)
   const violations      = useDetectionStore(s => s.violations)
 
-  // Only render while detection is active
+  const { pauseDetection, resumeDetection, stopDetection, resetDetection } = useDetectionPipeline()
+
+  // Only render while detection is active (running or paused)
   if (!isRunning && !isPaused) return null
 
   const critical = violations.filter(v => v.severity === 'CRITICAL')
   const hasCritical = critical.length > 0
+  const isCompleted = progressPercent >= 100 && !isRunning
 
   return (
-    <div className={`dsb ${hasCritical ? 'dsb--critical' : 'dsb--normal'}`}>
+    <div className={`dsb ${hasCritical ? 'dsb--critical' : 'dsb--normal'} ${isCompleted ? 'dsb--completed' : ''}`}>
+      {/* ── CONTROLS ── */}
+      <div className="dsb-controls">
+        <button 
+          className="dsb-btn dsb-btn--reset" 
+          onClick={resetDetection}
+          title="Reset Detection Session"
+        >
+          ⏮ RESET
+        </button>
+        
+        {isPaused ? (
+          <button 
+            className="dsb-btn dsb-btn--play" 
+            onClick={resumeDetection}
+            title="Resume Detection"
+          >
+            ▶ RESUME
+          </button>
+        ) : (
+          <button 
+            className="dsb-btn dsb-btn--pause" 
+            onClick={pauseDetection}
+            title="Pause Detection"
+            disabled={!isRunning}
+          >
+            ⏸ PAUSE
+          </button>
+        )}
+
+        <button 
+          className="dsb-btn dsb-btn--stop" 
+          onClick={stopDetection}
+          title="Stop Detection"
+          disabled={!isRunning && !isPaused}
+        >
+          ⏹ STOP
+        </button>
+      </div>
+
+      <div className="dsb-divider" />
+
       {/* Status pill */}
       <div className="dsb-status">
-        <span className={`dsb-dot ${isPaused ? 'dsb-dot--paused' : 'dsb-dot--running'}`} />
-        <span className="dsb-label">{isPaused ? 'PAUSED' : 'DETECTING'}</span>
+        <span className={`dsb-dot ${isPaused ? 'dsb-dot--paused' : isCompleted ? 'dsb-dot--completed' : 'dsb-dot--running'}`} />
+        <span className="dsb-label">
+          {isPaused ? 'PAUSED' : isCompleted ? 'COMPLETED' : 'DETECTING'}
+        </span>
       </div>
 
       {/* Progress bar */}
@@ -43,8 +91,12 @@ const DetectionStatusBar = memo(() => {
       {/* Metrics — dimmed and frozen while paused */}
       <div className={`dsb-metrics ${isPaused ? 'dsb-metrics--frozen' : ''}`}>
         <span className="dsb-metric">
-          <span className="dsb-metric-label">FPS</span>
-          <span className="dsb-metric-value">{isPaused ? '—' : fps}</span>
+          <span className="dsb-metric-label">STREAM FPS</span>
+          <span className="dsb-metric-value">{isPaused ? '—' : fps || '—'}</span>
+        </span>
+        <span className="dsb-metric">
+          <span className="dsb-metric-label">PROC RATE</span>
+          <span className="dsb-metric-value">{isPaused ? '—' : `${procRate} Hz`}</span>
         </span>
         <span className="dsb-metric">
           <span className="dsb-metric-label">LAT</span>

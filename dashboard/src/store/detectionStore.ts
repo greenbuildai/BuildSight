@@ -40,6 +40,12 @@ export interface ZoneViolation {
   timestamp:  number
 }
 
+export interface PeakRiskMoment {
+  time:  number
+  score: number
+  type:  'PPE_VIOLATION' | 'CROWD_DANGER' | 'RESTRICTED_ENTRY'
+}
+
 interface DetectionState {
   // Connection
   isConnected:     boolean
@@ -56,13 +62,27 @@ interface DetectionState {
   workerCount:     number
   sceneCondition:  string
   fps:             number
+  processingRate:  number
   latencyMs:       number
   frameCount:      number
+
+  // Background Video Session (Local persistence)
+  videoFile:       File | null
+  sessionId:       string | null
+  currentTime:     number
+  videoDuration:   number
 
   // Spatial state — drives GeoAI map live markers
   workerPositions: WorkerPosition[]
   zoneOccupancy:   Record<string, string[]>
   violations:      ZoneViolation[]
+  peakRiskMoments: PeakRiskMoment[]
+  roiPoly:         [number, number][] | null
+
+  // Raw frame detections (for DetectionSidebar display)
+  detections:      any[]
+  ppeWorkers:      any[]
+  condition:       string
 
   // Actions
   connect:         () => void
@@ -72,10 +92,21 @@ interface DetectionState {
   setRunning:         (running: boolean) => void
   setWorkerPositions: (workers: WorkerPosition[]) => void
   setViolations:      (violations: ZoneViolation[]) => void
+  setPeakRiskMoments: (moments: PeakRiskMoment[]) => void
   setWorkerCount:     (count: number) => void
   setFPS:             (fps: number) => void
+  setProcessingRate:  (fps: number) => void
   setLatencyMs:       (ms: number) => void
   setSceneCondition:  (cond: string) => void
+  setRoiPoly:         (poly: [number, number][] | null) => void
+  setDetections:      (dets: any[]) => void
+  setPpeWorkers:      (workers: any[]) => void
+
+  // Session Actions
+  setVideoSession:    (file: File | null) => void
+  setPaused:          (paused: boolean) => void
+  setPlayback:        (time: number, duration: number, progress: number) => void
+  resetSession:       () => void
 }
 
 const WS_URL = 'ws://localhost:8000/ws/detection'
@@ -91,11 +122,21 @@ export const useDetectionStore = create<DetectionState>((set, get) => ({
   workerCount:     0,
   sceneCondition:  'S1_normal',
   fps:             0,
+  processingRate:  0,
   latencyMs:       0,
   frameCount:      0,
+  videoFile:       null,
+  sessionId:       null,
+  currentTime:     0,
+  videoDuration:   0,
   workerPositions: [],
   zoneOccupancy:   {},
   violations:      [],
+  peakRiskMoments: [],
+  roiPoly:         null,
+  detections:      [],
+  ppeWorkers:      [],
+  condition:       'S1_normal',
 
   connect: () => {
     const existing = get()._socket
@@ -204,6 +245,10 @@ export const useDetectionStore = create<DetectionState>((set, get) => ({
   setViolations: (violations: ZoneViolation[]) => {
     set({ violations })
   },
+  
+  setPeakRiskMoments: (moments: PeakRiskMoment[]) => {
+    set({ peakRiskMoments: moments })
+  },
 
   setWorkerCount: (count: number) => {
     set({ workerCount: count })
@@ -213,11 +258,69 @@ export const useDetectionStore = create<DetectionState>((set, get) => ({
     set({ fps })
   },
 
+  setProcessingRate: (fps: number) => {
+    set({ processingRate: fps })
+  },
+
   setLatencyMs: (ms: number) => {
     set({ latencyMs: ms })
   },
 
   setSceneCondition: (cond: string) => {
-    set({ sceneCondition: cond })
+    set({ sceneCondition: cond, condition: cond })
+  },
+
+  setRoiPoly: (poly: [number, number][] | null) => {
+    set({ roiPoly: poly })
+  },
+
+  setDetections: (dets: any[]) => {
+    set({ detections: dets })
+  },
+
+  setPpeWorkers: (workers: any[]) => {
+    set({ ppeWorkers: workers })
+  },
+
+  setVideoSession: (file: File | null) => {
+    if (!file) {
+      set({ videoFile: null, sessionId: null, isRunning: false, isPaused: false })
+      return
+    }
+    set({ 
+      videoFile: file, 
+      sessionId: `v-${Date.now()}`, 
+      isRunning: true, 
+      isPaused: false,
+      progressPercent: 0,
+      currentTime: 0
+    })
+  },
+
+  setPaused: (paused: boolean) => {
+    set({ isPaused: paused })
+  },
+
+  setPlayback: (time: number, duration: number, progress: number) => {
+    set({ currentTime: time, videoDuration: duration, progressPercent: progress })
+  },
+
+  resetSession: () => {
+    set({
+      videoFile: null,
+      sessionId: null,
+      isRunning: false,
+      isPaused: false,
+      progressPercent: 0,
+      currentTime: 0,
+      workerPositions: [],
+      violations: [],
+      peakRiskMoments: [],
+      detections: [],
+      ppeWorkers: [],
+      workerCount: 0,
+      fps: 0,
+      processingRate: 0,
+    })
   },
 }))
