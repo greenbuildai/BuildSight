@@ -1392,19 +1392,23 @@ export function LiveMode() {
           setInferError(null)
           pendingRef.current = data.detections
           pendingHeatmapRef.current = data.heatmap ?? null
-          pushDetections(data.detections, frameElapsed, [], [], 0, data.condition)
+          pushDetections(data.detections, frameElapsed, data.valid_workers || [], [], 0, data.condition)
           
           // Sync to Global Store
           useDetectionStore.setState({
             detections: data.detections,
-            workerCount: data.detections.length,
+            ppeWorkers: data.valid_workers || [],
+            workerPositions: data.valid_workers || [],
+            workerCount: data.valid_workers ? data.valid_workers.length : data.detections.length,
             latencyMs: frameElapsed,
             sceneCondition: data.condition || store.sceneCondition,
             fps: Math.round(1000 / Math.max(16, frameElapsed))
           })
 
           // Peak Risk Moments logic for LiveMode
-          const violations = data.detections.filter((d: Detection) =>
+          const violations = data.valid_workers ? data.valid_workers.filter((d: any) =>
+            !d.ppe_compliant
+          ) : data.detections.filter((d: Detection) =>
             (d.class === 'worker' || d.class === 'person') && (!d.has_helmet || !d.has_vest)
           )
           if (violations.length >= 1) {

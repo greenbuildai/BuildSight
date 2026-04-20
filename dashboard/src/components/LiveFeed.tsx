@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useDetectionStats } from '../DetectionStatsContext'
 
 const detections = [
@@ -16,16 +16,26 @@ interface LiveFeedProps {
 
 export function LiveFeed({ confidenceThreshold }: LiveFeedProps) {
   const { pushDetections, setRunning, setModelName } = useDetectionStats()
-  const visible = detections.filter((d) => d.conf >= confidenceThreshold)
+  const visible = useMemo(() => 
+    detections.filter((d) => d.conf >= confidenceThreshold),
+    [confidenceThreshold]
+  )
 
   const [showHeatmap, setShowHeatmap] = useState(false)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const heatmapHistory = useRef<{ x: number, y: number, time: number, tone: string }[]>([])
 
+  // Initialization
   useEffect(() => {
     setRunning(true)
     setModelName('BS-ENSEMBLE-WBF')
-    
+    return () => {
+      setRunning(false)
+    }
+  }, [setRunning, setModelName])
+
+  // Polling and Drawing
+  useEffect(() => {
     const interval = setInterval(() => {
       const mapped = visible.map(d => ({
         class: d.label.includes('HARDHAT') ? 'helmet' : d.label.includes('VEST') ? 'vest' : 'worker',
@@ -36,14 +46,12 @@ export function LiveFeed({ confidenceThreshold }: LiveFeedProps) {
       // Add to heatmap history
       const now = performance.now()
       visible.forEach(d => {
-        // Parse percentages like "20%" to [0, 1]
         const x = parseFloat(d.left) / 100
         const y = parseFloat(d.top) / 100
         heatmapHistory.current.push({ x, y, time: now, tone: d.tone })
       })
     }, 1000)
 
-    // Drawing Loop
     let raf: number
     const draw = () => {
       const canvas = canvasRef.current
@@ -59,7 +67,6 @@ export function LiveFeed({ confidenceThreshold }: LiveFeedProps) {
           
           if (showHeatmap) {
             const now = performance.now()
-            // Clean up old points (> 1.5s)
             heatmapHistory.current = heatmapHistory.current.filter(p => now - p.time < 1500)
             
             heatmapHistory.current.forEach(p => {
@@ -88,9 +95,8 @@ export function LiveFeed({ confidenceThreshold }: LiveFeedProps) {
     return () => {
       clearInterval(interval)
       cancelAnimationFrame(raf)
-      setRunning(false)
     }
-  }, [confidenceThreshold, pushDetections, setRunning, setModelName, showHeatmap])
+  }, [pushDetections, visible, showHeatmap])
 
   return (
     <div className="live-feed">

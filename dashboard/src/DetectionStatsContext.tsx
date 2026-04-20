@@ -1,17 +1,25 @@
-import { createContext, useContext, useState, useCallback, useRef, useEffect, type ReactNode } from 'react'
+import { 
+  createContext, 
+  useContext, 
+  useState, 
+  useCallback, 
+  useMemo, 
+  useRef, 
+  useEffect, 
+  type ReactNode 
+} from 'react'
 import type { AlertItem } from './components/AlertLog'
 import { useDetectionStore, type WorkerPosition, type ZoneViolation } from './store/detectionStore'
 import { useSettings } from './SettingsContext'
 
 /* ═══════════════════════════════════════════════════════════════════════════════
-   BuildSight — Detection Pipeline Provider
-   The engine for persistent background inference. Moves the loop from
-   DetectionPanel (view) to the global root (service).
+   BuildSight — Persistent Detection Pipeline Context
+   --------------------------------------------------
+   This is the "Global Engine" of the BuildSight detection system. 
+   It owns a persistent background inference loop using a hidden <video> 
+   and <canvas> element. This ensures that detections continue even when 
+   the user navigates between Dashboard, GeoAI, and Surveillance tabs.
    ═══════════════════════════════════════════════════════════════════════════════ */
-
-const API = 'http://localhost:8000/api'
-const MAX_ALERTS = 6
-const ALERT_DEDUPE_MS = 8000
 
 export interface DetectionStats {
   totalWorkers: number
@@ -34,7 +42,7 @@ const EMPTY: DetectionStats = {
   elapsedMs: 0,
   framesScanned: 0,
   isRunning: false,
-  modelName: '',
+  modelName: 'BS-ENSEMBLE-WBF',
 }
 
 interface DetectionPipelineCtx {
@@ -58,15 +66,15 @@ interface DetectionPipelineCtx {
     fps?: number,
     sceneCondition?: string
   ) => void
-  setModelName:  (name: string) => void
-  setRunning:    (running: boolean) => void
+  setModelName: (name: string) => void
+  setRunning: (running: boolean) => void
 }
 
 const Ctx = createContext<DetectionPipelineCtx | null>(null)
 
 export function useDetectionPipeline() {
   const ctx = useContext(Ctx)
-  if (!ctx) throw new Error('useDetectionPipeline must be used inside DetectionPipelineProvider')
+  if (!ctx) throw new Error('useDetectionPipeline must be used inside DetectionStatsProvider')
   return ctx
 }
 
@@ -88,8 +96,23 @@ export function DetectionStatsProvider({ children }: { children: ReactNode }) {
   const lastInferenceTimeRef = useRef<number>(0)
   const currentSessionIdRef = useRef<string | null>(null)
 
-  // Zustand Store Bridge
-  const store = useDetectionStore()
+  // Zustand Store Bridge - Use stable state access
+  const storeSetRunning = useDetectionStore(s => s.setRunning)
+  const storeResetSession = useDetectionStore(s => s.resetSession)
+  const storeSetVideoSession = useDetectionStore(s => s.setVideoSession)
+  const storeSetPaused = useDetectionStore(s => s.setPaused)
+  const storeSetPlayback = useDetectionStore(s => s.setPlayback)
+  const storeSetWorkerPositions = useDetectionStore(s => s.setWorkerPositions)
+  const storeSetViolations = useDetectionStore(s => s.setViolations)
+  const storeSetWorkerCount = useDetectionStore(s => s.setWorkerCount)
+  const storeSetFPS = useDetectionStore(s => s.setFPS)
+  const storeSetProcessingRate = useDetectionStore(s => s.setProcessingRate)
+  const storeSetLatencyMs = useDetectionStore(s => s.setLatencyMs)
+  const storeSetSceneCondition = useDetectionStore(s => s.setSceneCondition)
+  const storePeakRiskMoments = useDetectionStore(s => s.peakRiskMoments)
+  const storeSetPeakRiskMoments = useDetectionStore(s => s.setPeakRiskMoments)
+  const storeSetDetections = useDetectionStore(s => s.setDetections)
+  const storeSetPpeWorkers = useDetectionStore(s => s.setPpeWorkers)
 
   // ── Alert Helpers ───────────────────────────────────────────────────────────
   const formatAlertTime = (date: Date) => {
@@ -99,7 +122,7 @@ export function DetectionStatsProvider({ children }: { children: ReactNode }) {
     return `${hours}:${mins}:${secs}`
   }
 
-  const buildLiveAlerts = (
+  const buildLiveAlerts = useCallback((
     detections: Array<{ class: string; confidence: number }>,
     effectiveWorkers: number,
     helmets: number,
@@ -115,10 +138,10 @@ export function DetectionStatsProvider({ children }: { children: ReactNode }) {
       alerts.push({
         id: `DL-${now.getTime()}-H`,
         time: formatAlertTime(now),
-        camera: 'DETECTION / ACTIVE WORKSPACE',
+        camera: 'GLOBAL / BACKGROUND PIPELINE',
         severity: 'critical',
         title: 'Hardhat non-compliance detected',
-        detail: `${effectiveWorkers - helmets} worker${effectiveWorkers - helmets !== 1 ? 's' : ''} missing helmet protection in the current scan.`,
+        detail: `${effectiveWorkers - helmets} worker${effectiveWorkers - helmets !== 1 ? 's' : ''} missing protection.`,
       })
     }
 
@@ -126,267 +149,234 @@ export function DetectionStatsProvider({ children }: { children: ReactNode }) {
       alerts.push({
         id: `DL-${now.getTime()}-V`,
         time: formatAlertTime(now),
-        camera: 'DETECTION / ACTIVE WORKSPACE',
+        camera: 'GLOBAL / BACKGROUND PIPELINE',
         severity: 'warning',
-        title: 'High-vis vest non-compliance detected',
-        detail: `${effectiveWorkers - vests} worker${effectiveWorkers - vests !== 1 ? 's' : ''} missing high-visibility vest coverage in the current scan.`,
-      })
-    }
-
-    if (detections.length > 0 && avgConfidence < 0.55) {
-      alerts.push({
-        id: `DL-${now.getTime()}-C`,
-        time: formatAlertTime(now),
-        camera: 'DETECTION / ACTIVE WORKSPACE',
-        severity: 'info',
-        title: 'Detection confidence degraded',
-        detail: `Average confidence dropped to ${(avgConfidence * 100).toFixed(0)}%. Manual review recommended.`,
+        title: 'High-vis vest non-compliance',
+        detail: `${effectiveWorkers - vests} worker${effectiveWorkers - vests !== 1 ? 's' : ''} missing vest coverage.`,
       })
     }
 
     return alerts
-  }
+  }, [])
 
   const appendDedupedAlerts = useCallback((prev: AlertItem[], nextAlerts: AlertItem[]) => {
     const now = Date.now()
+    const DEDUPE_MS = 8000
+    const MAX_ALERTS = 8
+
     const deduped = nextAlerts.filter((candidate) => {
       const match = prev.find((existing) => {
         const existingStamp = Number(existing.id.split('-')[1] ?? 0)
-        return existing.title === candidate.title
-          && existing.detail === candidate.detail
-          && existing.camera === candidate.camera
-          && now - existingStamp < ALERT_DEDUPE_MS
+        return existing.title === candidate.title && now - existingStamp < DEDUPE_MS
       })
       return !match
     })
+
     return [...deduped, ...prev].slice(0, MAX_ALERTS)
   }, [])
 
-  // ── Engine Core ─────────────────────────────────────────────────────────────
-  
-  const pushDetections = useCallback(
-    (
-      detections: Array<{ class: string; confidence: number }>, 
-      elapsedMs: number,
-      validWorkers?: WorkerPosition[],
-      violations?: ZoneViolation[],
-      fps?: number,
-      sceneCondition?: string
-    ) => {
-      let workers = 0, helmets = 0, vests = 0
-      for (const d of detections) {
-        const cls = d.class.toLowerCase()
-        if (cls === 'worker' || cls === 'person') workers++
-        if (cls === 'helmet' || cls === 'hardhat') helmets++
-        if (cls === 'safety_vest' || cls === 'safety-vest' || cls === 'vest') vests++
-      }
-
-      const effectiveWorkers = workers > 0 ? workers : Math.max(helmets, vests)
-      
-      setLiveAlerts(prev => appendDedupedAlerts(prev, buildLiveAlerts(detections, effectiveWorkers, helmets, vests)))
-
-      setStats(prev => ({
-        ...prev,
-        totalWorkers: effectiveWorkers,
-        helmetsDetected: helmets,
-        vestsDetected: vests,
-        proximityViolations: violations?.length ?? prev.proximityViolations,
-        avgConfidence: detections.length > 0 
-          ? detections.reduce((sum, d) => sum + d.confidence, 0) / detections.length 
-          : prev.avgConfidence,
-        elapsedMs,
-        framesScanned: prev.framesScanned + 1,
-        isRunning: true,
-      }))
-
-      // Sync to Zustand
-      const s = useDetectionStore.getState()
-      if (validWorkers) s.setWorkerPositions(validWorkers)
-      if (violations)   s.setViolations(violations)
-      s.setWorkerCount(effectiveWorkers)
-      if (fps !== undefined) s.setFPS(fps)
-      s.setLatencyMs(elapsedMs)
-      if (sceneCondition) s.setSceneCondition(sceneCondition)
-      s.setDetections(detections)
-      if (validWorkers) s.setPpeWorkers(validWorkers)
-    },
-    [appendDedupedAlerts],
-  )
-
-  const runInference = async (sessionId: string) => {
-    if (!videoRef.current || !canvasRef.current || isProcessingRef.current) return
-    if (videoRef.current.paused || videoRef.current.ended) return
-    if (sessionId !== currentSessionIdRef.current) return
-
-    isProcessingRef.current = true
-    const t0 = performance.now()
-    
-    try {
-      const video = videoRef.current
-      const canvas = canvasRef.current
-      const ctx = canvas.getContext('2d')
-      if (!ctx) return
-
-      // Extract high-quality frame
-      const MAX_DIM = 640
-      const scale = Math.min(1, MAX_DIM / Math.max(video.videoWidth, video.videoHeight, 1))
-      canvas.width = Math.round(video.videoWidth * scale)
-      canvas.height = Math.round(video.videoHeight * scale)
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
-      
-      const b64 = canvas.toDataURL('image/jpeg', 0.8)
-      
-      const form = new FormData()
-      form.append('image_b64', b64)
-      form.append('model', settings.selectedModel)
-      form.append('condition', store.sceneCondition)
-      form.append('auto_condition', '1')
-      if (store.roiPoly && store.roiPoly.length >= 3) {
-        form.append('zone_poly', JSON.stringify(store.roiPoly))
-      }
-
-      const res = await fetch(`${API}/detect/frame`, { method: 'POST', body: form })
-      
-      // Secondary check: verify session hasn't changed during the async wait
-      if (sessionId !== currentSessionIdRef.current) return
-
-      if (res.ok) {
-        const data = await res.json()
-        const elapsed = Math.round(performance.now() - t0)
-        pushDetections(data.detections, elapsed, data.valid_workers, data.violations, undefined, data.condition)
-        
-        // Peak Risk Moments Logic
-        const ppeViolations = data.detections.filter((d: any) => 
-          (d.class === 'worker' || d.class === 'person') && (!d.has_helmet || !d.has_vest)
-        )
-
-        if (ppeViolations.length >= 2) {
-          const currentMoments = store.peakRiskMoments
-          const alreadyExists = currentMoments.some(m => Math.abs(m.time - video.currentTime) < 2)
-          
-          if (!alreadyExists) {
-            const newMoment = {
-              time: video.currentTime,
-              score: ppeViolations.length,
-              type: 'PPE_VIOLATION' as const
-            }
-            const updatedMoments = [...currentMoments, newMoment]
-              .sort((a, b) => b.score - a.score)
-              .slice(0, 5)
-            store.setPeakRiskMoments(updatedMoments)
-          }
-        }
-
-        // Calculate Processing Rate (Inference FPS)
-        const rate = Math.round(1000 / Math.max(16, elapsed))
-        store.setProcessingRate(rate)
-
-        // Sync Playback Progress
-        const progress = Math.round((video.currentTime / video.duration) * 100)
-        store.setPlayback(video.currentTime, video.duration, progress)
-      }
-    } catch (err) {
-      console.error('Inference Loop Error:', err)
-    } finally {
-      isProcessingRef.current = false
-    }
-  }
-
-  const loop = () => {
-    if (!store.isRunning || store.isPaused || !currentSessionIdRef.current) return
-    
-    const now = performance.now()
-    // Target ~12 inference FPS to not saturate the backend
-    if (now - lastInferenceTimeRef.current >= 80) {
-      lastInferenceTimeRef.current = now
-      runInference(currentSessionIdRef.current!)
-    }
-    loopIdRef.current = requestAnimationFrame(loop)
-  }
-
-  // ── Unified Controller API ──────────────────────────────────────────────────
+  // ── Pipeline Controls ───────────────────────────────────────────────────────
   
   const startDetection = useCallback((file: File) => {
-    const video = videoRef.current
-    if (!video) return
-
-    if (currentSessionIdRef.current) resetDetection()
-
-    const url = URL.createObjectURL(file)
-    const sid = `v-${Date.now()}`
-    currentSessionIdRef.current = sid
-    video.src = url
-
-    video.play().then(() => {
-      useDetectionStore.getState().setVideoSession(file)
-      useDetectionStore.getState().setRunning(true)
-
-      // Upload to server-side BG service so GeoAI gets live worker positions
-      const form = new FormData()
-      form.append('video', file)
-      fetch(`${API}/video/upload-background`, { method: 'POST', body: form })
-        .then(r => r.ok ? r.json() : Promise.reject(r.status))
-        .then(() => useDetectionStore.getState().requestSnapshot())
-        .catch(err => console.warn('[BG] Server-side upload failed:', err))
-    }).catch(e => console.error('[Detection] Video play failed:', e))
-  }, [])
+    console.log('--- GLOBAL PIPELINE START ---', file.name)
+    currentSessionIdRef.current = `sess-${Date.now()}`
+    
+    // Reset local and store state
+    setStats({ ...EMPTY, isRunning: true })
+    setLiveAlerts([])
+    storeResetSession()
+    storeSetVideoSession(file)
+    
+    if (videoRef.current) {
+      const url = URL.createObjectURL(file)
+      videoRef.current.src = url
+      videoRef.current.play()
+    }
+  }, [storeResetSession, storeSetVideoSession])
 
   const pauseDetection = useCallback(() => {
     videoRef.current?.pause()
-    useDetectionStore.getState().setPaused(true)
-    fetch(`${API}/detection/pause`, { method: 'POST' }).catch(() => {})
-  }, [])
+    setStats(prev => ({ ...prev, isPaused: false })) 
+    storeSetPaused(true)
+  }, [storeSetPaused])
 
   const resumeDetection = useCallback(() => {
-    videoRef.current?.play().then(() => {
-      useDetectionStore.getState().setPaused(false)
-      fetch(`${API}/detection/resume`, { method: 'POST' }).catch(() => {})
-    }).catch(() => {})
-  }, [])
-
-  const seekTo = useCallback((time: number) => {
-    if (videoRef.current) {
-      const dur = videoRef.current.duration || useDetectionStore.getState().videoDuration || 1
-      videoRef.current.currentTime = time
-      useDetectionStore.getState().setPlayback(time, dur, Math.round((time / dur) * 100))
-    }
-  }, [])
+    videoRef.current?.play()
+    storeSetPaused(false)
+  }, [storeSetPaused])
 
   const stopDetection = useCallback(() => {
-    videoRef.current?.pause()
-    useDetectionStore.getState().setRunning(false)
-    useDetectionStore.getState().setPaused(false)
-    if (loopIdRef.current) cancelAnimationFrame(loopIdRef.current)
-    fetch(`${API}/detection/stop`, { method: 'POST' }).catch(() => {})
-  }, [])
+    if (videoRef.current) {
+      videoRef.current.pause()
+      videoRef.current.src = ''
+    }
+    setStats({ ...EMPTY })
+    storeResetSession()
+    currentSessionIdRef.current = null
+  }, [storeResetSession])
 
   const resetDetection = useCallback(() => {
     stopDetection()
-    currentSessionIdRef.current = null
-    if (videoRef.current) {
-      const src = videoRef.current.src
-      if (src) URL.revokeObjectURL(src)
-      videoRef.current.src = ''
-      videoRef.current.load()
-    }
-    useDetectionStore.getState().resetSession()
-    setStats({ ...EMPTY })
     setLiveAlerts([])
   }, [stopDetection])
+
+  const seekTo = useCallback((time: number) => {
+    if (videoRef.current) {
+      videoRef.current.currentTime = time
+    }
+  }, [])
 
   const setModelName = useCallback((name: string) => {
     setStats(prev => ({ ...prev, modelName: name }))
   }, [])
 
-  // Start the background loop when state changes
-  useEffect(() => {
-    if (store.isRunning && !store.isPaused && currentSessionIdRef.current) {
-      loopIdRef.current = requestAnimationFrame(loop)
-    } else {
-      if (loopIdRef.current) cancelAnimationFrame(loopIdRef.current)
+  const setRunning = useCallback((running: boolean) => {
+    setStats(prev => ({ ...prev, isRunning: running }))
+    storeSetRunning(running)
+  }, [storeSetRunning])
+
+  // Process incoming detection data (bridge for non-video detections)
+  const pushDetections = useCallback((
+    detections: Array<{ class: string; confidence: number }>,
+    elapsedMs: number,
+    validWorkers?: WorkerPosition[],
+    violations?: ZoneViolation[],
+    fps?: number,
+    sceneCondition?: string
+  ) => {
+    let workers = 0, helmets = 0, vests = 0, confSum = 0
+
+    for (const d of detections) {
+      const cls = d.class.toLowerCase()
+      if (cls === 'worker' || cls === 'person') workers++
+      if (cls === 'helmet' || cls === 'hardhat') helmets++
+      if (cls === 'safety_vest' || cls === 'vest') vests++
+      confSum += d.confidence
     }
-    return () => { if (loopIdRef.current) cancelAnimationFrame(loopIdRef.current) }
-  }, [store.isRunning, store.isPaused])
+
+    const effectiveWorkers = workers > 0 ? workers : Math.max(helmets, vests)
+    const avgConfidence = detections.length > 0 ? confSum / detections.length : 0
+
+    // Update Local Context
+    setStats(prev => ({
+      ...prev,
+      totalWorkers: effectiveWorkers,
+      helmetsDetected: helmets,
+      vestsDetected: vests,
+      proximityViolations: violations?.length ?? prev.proximityViolations,
+      avgConfidence,
+      elapsedMs,
+      framesScanned: prev.framesScanned + 1,
+      isRunning: true
+    }))
+
+    // Generate Alerts
+    const alerts = buildLiveAlerts(detections, effectiveWorkers, helmets, vests)
+    if (alerts.length > 0) {
+      setLiveAlerts(prev => appendDedupedAlerts(prev, alerts))
+    }
+
+    // Update Global Zustand Store (The true persistence layer)
+    storeSetDetections(detections)
+    if (validWorkers) {
+      storeSetWorkerPositions(validWorkers)
+      storeSetPpeWorkers(validWorkers)
+    }
+    if (violations) storeSetViolations(violations)
+    storeSetWorkerCount(effectiveWorkers)
+    if (fps) {
+        storeSetFPS(fps)
+        storeSetProcessingRate(fps)
+    }
+    storeSetLatencyMs(elapsedMs)
+    if (sceneCondition) storeSetSceneCondition(sceneCondition)
+  }, [buildLiveAlerts, appendDedupedAlerts, storeSetDetections, storeSetWorkerPositions, storeSetPpeWorkers, storeSetViolations, storeSetWorkerCount, storeSetFPS, storeSetProcessingRate, storeSetLatencyMs, storeSetSceneCondition])
+
+  // ── INFERENCE LOOP ENGINE ──────────────────────────────────────────────────
+  
+  const processFrame = useCallback(async () => {
+    const video = videoRef.current
+    const canvas = canvasRef.current
+    if (!video || !canvas || video.paused || video.ended || isProcessingRef.current) return
+
+    // Throttle inference based on target FPS (default 12 FPS)
+    const now = performance.now()
+    const targetInterval = 1000 / 12
+    if (now - lastInferenceTimeRef.current < targetInterval) return
+
+    isProcessingRef.current = true
+    lastInferenceTimeRef.current = now
+
+    try {
+      const ctx = canvas.getContext('2d')
+      if (!ctx) return
+      
+      // Ensure canvas matches video resolution
+      if (canvas.width !== video.videoWidth) {
+        canvas.width = video.videoWidth
+        canvas.height = video.videoHeight
+      }
+
+      ctx.drawImage(video, 0, 0)
+
+      // /api/detect/frame expects image_b64 (base64 string), NOT a raw file blob
+      const image_b64 = canvas.toDataURL('image/jpeg', 0.8)
+
+      // Update Playback Stats in Store
+      storeSetPlayback(video.currentTime, video.duration, (video.currentTime / video.duration) * 100)
+
+      const formData = new FormData()
+      formData.append('image_b64', image_b64)
+      formData.append('condition', 'S1_normal')
+      formData.append('auto_condition', '1')
+      formData.append('confidence', settings.confidenceThreshold.toString())
+
+      const res = await fetch('http://localhost:8000/api/detect/frame', {
+        method: 'POST',
+        body: formData,
+      })
+
+      if (res.ok) {
+        const data = await res.json()
+        pushDetections(
+          data.detections || [],
+          data.elapsed_ms || 0,
+          data.valid_workers || [],
+          [],
+          data.elapsed_ms ? Math.round(1000 / Math.max(data.elapsed_ms, 1)) : 12,
+          data.condition || 'S1_normal'
+        )
+
+        // PEAK RISK: derive from valid_workers ppe_compliant flag (authoritative server list)
+        const nonCompliant = (data.valid_workers || []).filter((w: any) => !w.ppe_compliant)
+        if (nonCompliant.length > 0) {
+          const currentMoments = storePeakRiskMoments
+          const alreadyTracked = currentMoments.some(m => Math.abs(m.time - video.currentTime) < 2)
+          if (!alreadyTracked) {
+            const newMoment = {
+              time: video.currentTime,
+              score: nonCompliant.length * 20,
+              type: 'PPE_VIOLATION' as const
+            }
+            storeSetPeakRiskMoments([...currentMoments, newMoment].slice(-10))
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('Background Inference Error:', err)
+    } finally {
+      isProcessingRef.current = false
+    }
+  }, [pushDetections, settings.confidenceThreshold, storeSetPlayback, storePeakRiskMoments, storeSetPeakRiskMoments])
+
+  useEffect(() => {
+    const loop = () => {
+      processFrame()
+      loopIdRef.current = requestAnimationFrame(loop)
+    }
+    loopIdRef.current = requestAnimationFrame(loop)
+    return () => cancelAnimationFrame(loopIdRef.current)
+  }, [processFrame])
 
   // Monitor video end
   useEffect(() => {
@@ -400,22 +390,36 @@ export function DetectionStatsProvider({ children }: { children: ReactNode }) {
     }
     video.addEventListener('ended', onEnded)
     return () => video.removeEventListener('ended', onEnded)
-  }, [store])
+  }, [storeSetPaused, storeSetRunning, storeSetPlayback])
+
+  const value = useMemo(() => ({ 
+    stats, 
+    liveAlerts, 
+    startDetection, 
+    pauseDetection, 
+    resumeDetection, 
+    stopDetection, 
+    resetDetection,
+    seekTo,
+    pushDetections, 
+    setModelName,
+    setRunning
+  }), [
+    stats, 
+    liveAlerts, 
+    startDetection, 
+    pauseDetection, 
+    resumeDetection, 
+    stopDetection, 
+    resetDetection,
+    seekTo,
+    pushDetections, 
+    setModelName,
+    setRunning
+  ])
 
   return (
-    <Ctx.Provider value={{
-      stats,
-      liveAlerts,
-      startDetection,
-      pauseDetection,
-      resumeDetection,
-      stopDetection,
-      resetDetection,
-      seekTo,
-      pushDetections,
-      setModelName,
-      setRunning: store.setRunning,
-    }}>
+    <Ctx.Provider value={value}>
       {children}
       {/* ── HIDDEN WORKER ELEMENTS ── */}
       <div style={{ position: 'fixed', top: -1000, left: -1000, visibility: 'hidden', pointerEvents: 'none' }}>
@@ -425,7 +429,7 @@ export function DetectionStatsProvider({ children }: { children: ReactNode }) {
           playsInline 
           preload="auto"
           onLoadedMetadata={() => {
-            if (videoRef.current) store.setPlayback(0, videoRef.current.duration, 0)
+            if (videoRef.current) storeSetPlayback(0, videoRef.current.duration, 0)
           }}
         />
         <canvas ref={canvasRef} />
@@ -433,6 +437,3 @@ export function DetectionStatsProvider({ children }: { children: ReactNode }) {
     </Ctx.Provider>
   )
 }
-
-// Backward-compat alias so App.tsx doesn't need updating
-export const DetectionStatsProvider = DetectionPipelineProvider
