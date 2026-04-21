@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, type CSSProperties, Component, type ReactNode, type ErrorInfo } from 'react'
+// Force refresh
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
   state = { error: null }

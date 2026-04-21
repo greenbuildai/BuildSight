@@ -41,6 +41,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from starlette.background import BackgroundTask
 import traceback as _traceback
+import sys
+# Ensure the backend directory is in the path for local imports (database, geoai, etc.)
+_backend_path = os.path.dirname(os.path.abspath(__file__))
+if _backend_path not in sys.path:
+    sys.path.insert(0, _backend_path)
+
 import database
 from datetime import datetime
 from geoai import geoai_router

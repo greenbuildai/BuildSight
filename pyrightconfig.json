@@ -1,11 +1,28 @@
 {
   "pythonVersion": "3.10",
-  "venvPath": ".",
+  "venvPath": "e:/Company/Green Build AI/Prototypes/BuildSight",
   "venv": ".venv",
   "pythonPlatform": "Windows",
-  "extraPaths": [
+  "include": [
     "dashboard/backend",
+    "dashboard/src",
+    "dashboard/backend/research_core",
     "."
+  ],
+  "extraPaths": [
+    "dashboard/backend/research_core",
+    "dashboard/backend",
+    "dashboard/backend/geoai",
+    "."
+  ],
+  "executionEnvironments": [
+    {
+      "root": "dashboard/backend",
+      "extraPaths": [
+        ".",
+        "geoai"
+      ]
+    }
   ],
   "exclude": [
     "node_modules",

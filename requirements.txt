@@ -1,0 +1,50 @@
+# BuildSight Core Dependencies
+fastapi
+uvicorn[standard]
+websockets
+requests
+python-dotenv
+python-multipart
+starlette
+
+# AI/ML & Computer Vision
+torch
+torchvision
+transformers
+ultralytics
+diffusers
+timm
+einops
+segment-anything
+scipy
+huggingface-hub
+
+# Data & Math
+numpy
+pandas
+matplotlib
+plotly
+shapely
+
+# Imaging & Video
+opencv-python
+Pillow
+
+# Document & Reporting
+fpdf
+python-pptx
+beautifulsoup4
+
+# Database & Infrastructure
+psycopg2-binary
+paramiko
+tqdm
+
+# Voice & Audio
+edge-tts
+pyttsx3
+pyaudio
+
+# AI APIs
+google-genai
+vertexai

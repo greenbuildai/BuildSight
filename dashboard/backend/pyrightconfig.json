@@ -1,0 +1,12 @@
+{
+  "pythonVersion": "3.10",
+  "venvPath": "../../",
+  "venv": ".venv",
+  "pythonPlatform": "Windows",
+  "extraPaths": [
+    ".",
+    "geoai"
+  ],
+  "reportMissingImports": "warning",
+  "reportMissingModuleSource": "none"
+}
