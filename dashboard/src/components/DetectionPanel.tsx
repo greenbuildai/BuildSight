@@ -66,11 +66,13 @@ interface DetectResult {
 }
 
 const CLASS_COLORS: Record<string, string> = {
-  helmet: '#00ff55', // Green
-  safety_vest: '#ffdd00', // Yellow
-  worker: '#0088ff', // Blue
-  person: '#0088ff', // Blue (same as worker)
-  'safety-vest': '#ffdd00', // Yellow alias
+  helmet: '#ffd600',
+  hardhat: '#ffd600',
+  safety_vest: '#00bfff',
+  'safety-vest': '#00bfff',
+  vest: '#00bfff',
+  worker: '#00c864',
+  person: '#00c864',
 }
 
 /** 
@@ -454,78 +456,81 @@ function DetectionSidebar({
   )
 }
 
-// ── Image Upload Mode (unchanged from original) ────────────────────────────────
-function DetectionImageOverlay({ result }: { result: DetectResult }) {
-  const zones = result.heatmap?.zones ?? []
-  const points = result.heatmap?.points ?? []
-  const riskZones = zones.filter(zone => zone.risk_score >= 0.4)
+const IMAGE_CLASS_COLORS: Record<string, string> = {
+  worker: '#00c864',
+  person: '#00c864',
+  helmet: '#ffd600',
+  hardhat: '#ffd600',
+  safety_vest: '#00bfff',
+  'safety-vest': '#00bfff',
+  vest: '#00bfff',
+}
+
+function ImageOverlay({ imageB64, detections }: { imageB64: string, detections: Detection[] }) {
+  const imgRef = useRef<HTMLImageElement>(null)
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+
+  useEffect(() => {
+    const img = imgRef.current
+    const canvas = canvasRef.current
+    if (!img || !canvas || !detections.length) return
+
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+
+    const draw = () => {
+      if (!img.complete) {
+        img.onload = draw
+        return
+      }
+
+      canvas.width = img.naturalWidth
+      canvas.height = img.naturalHeight
+      ctx.clearRect(0, 0, canvas.width, canvas.height)
+
+      for (const det of detections) {
+        const [x1, y1, x2, y2] = det.box
+        const isWorkerBox = det.class === 'worker' || det.class === 'person'
+
+        let borderCol = IMAGE_CLASS_COLORS[det.class] ?? '#aaaaaa'
+        if (isWorkerBox) {
+          if (det.has_helmet === true && det.has_vest === true) {
+            borderCol = '#00c864'
+          } else if (det.has_helmet === false && det.has_vest === false) {
+            borderCol = '#ff2a2a'
+          } else {
+            borderCol = '#ffaa00'
+          }
+        }
+
+        ctx.strokeStyle = borderCol
+        ctx.lineWidth = 3
+        ctx.strokeRect(x1, y1, x2 - x1, y2 - y1)
+
+        const helmBadge = isWorkerBox ? (det.has_helmet === false ? ' ⚠H' : '') : ''
+        const vestBadge = isWorkerBox ? (det.has_vest === false ? ' ⚠V' : '') : ''
+        const label = isWorkerBox
+          ? `W ${(det.confidence * 100).toFixed(0)}%${helmBadge}${vestBadge}`
+          : `${det.class} ${(det.confidence * 100).toFixed(0)}%`
+
+        ctx.font = 'bold 14px monospace'
+        const tw = ctx.measureText(label).width
+        ctx.fillStyle = borderCol
+        ctx.fillRect(x1, Math.max(0, y1 - 20), tw + 10, 20)
+        ctx.fillStyle = isWorkerBox ? '#000' : '#fff'
+        ctx.fillText(label, x1 + 5, Math.max(14, y1 - 5))
+      }
+    }
+
+    draw()
+  }, [imageB64, detections])
 
   return (
-    <svg className="det-results__heatmap" viewBox="0 0 1 1" preserveAspectRatio="none" aria-hidden="true">
-      <defs>
-        {points.map((point, index) => {
-          const color = point.risk_level === 'CRITICAL'
-            ? 'rgba(255,42,42,'
-            : point.risk_level === 'HIGH'
-              ? 'rgba(255,140,0,'
-              : point.risk_level === 'MODERATE'
-                ? 'rgba(255,214,0,'
-                : point.type === 'violation'
-                  ? 'rgba(255,96,60,'
-                  : 'rgba(0,255,136,'
-          return (
-            <radialGradient id={`risk-grad-${index}`} key={`grad-${index}`}>
-              <stop offset="0%" stopColor={`${color}${Math.min(0.08 + point.value * 0.08, 0.18)})`} />
-              <stop offset="100%" stopColor={`${color}0)`} />
-            </radialGradient>
-          )
-        })}
-      </defs>
-
-      {points.map((point, index) => (
-        <ellipse
-          key={`point-${index}`}
-          cx={point.x}
-          cy={point.y}
-          rx={0.03 + point.value * 0.03}
-          ry={0.05 + point.value * 0.05}
-          fill={`url(#risk-grad-${index})`}
-        />
-      ))}
-
-      {riskZones.map((zone, index) => {
-        const [x1, y1, x2, y2] = zone.box
-        const frameW = Math.max(result.heatmap?.frame_width ?? x2, 1)
-        const frameH = Math.max(result.heatmap?.frame_height ?? y2, 1)
-        const x = x1 / frameW
-        const y = y1 / frameH
-        const width = (x2 - x1) / frameW
-        const height = (y2 - y1) / frameH
-        const color = zone.risk_level === 'CRITICAL'
-          ? '#ff2a2a'
-          : zone.risk_level === 'HIGH'
-            ? '#ff8c00'
-            : '#ffd600'
-        return (
-          <g key={`zone-${index}`}>
-            <rect
-              x={x}
-              y={y}
-              width={width}
-              height={height}
-              fill="none"
-              stroke={color}
-              strokeOpacity={0.5 + zone.risk_score * 0.3}
-              strokeWidth={0.002}
-              strokeDasharray="0.012 0.008"
-            />
-            <text x={x + 0.01} y={Math.max(0.035, y - 0.01)} fontSize={0.026} className="det-results__risk-label">
-              {zone.risk_level} {Math.round(zone.risk_score * 100)}%
-            </text>
-          </g>
-        )
-      })}
-    </svg>
+    <div className="det-results__image-wrap">
+      <img ref={imgRef} src={`data:image/jpeg;base64,${imageB64}`}
+        className="det-results__image" alt="detection result" style={{ display: 'block' }} />
+      <canvas ref={canvasRef} className="det-results__overlay" />
+    </div>
   )
 }
 
@@ -617,11 +622,7 @@ function ImageUploadMode() {
 
       {result && (
         <div className="det-results">
-          <div className="det-results__image-wrap">
-            <img src={`data:image/jpeg;base64,${result.image_b64}`}
-              className="det-results__image" alt="detection result" />
-            {result.heatmap && <DetectionImageOverlay result={result} />}
-          </div>
+          <ImageOverlay imageB64={result.image_b64} detections={result.detections} />
           <DetectionSidebar
             detections={result.detections}
             elapsed={result.elapsed_ms}
