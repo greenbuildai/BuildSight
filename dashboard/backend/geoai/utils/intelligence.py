@@ -1,19 +1,32 @@
+"""
+BuildSight GeoAI — Intelligence Layer
+======================================
+Handles Florence-2 (via geoai_vlm_util) for site narration and SAM for segmentation.
+
+NOTE (2026-04-22): The internal Moondream2 VLM loading has been REMOVED.
+All VLM narration is now delegated to `geoai_vlm_util.describe_frame_sync()`
+which uses Florence-2-base. This prevents the "Double VLM Load" crash that
+occurred when both intelligence.py and geoai_vlm_util.py tried to load
+separate VLM models simultaneously, exhausting VRAM.
+"""
+
 import os
 import torch
 import cv2
 import numpy as np
 import logging
-import asyncio
 from PIL import Image
 from typing import Dict, List, Optional, Any
 
 # Configure Logger
 logger = logging.getLogger("BuildSight.Intelligence")
 
+
 class BuildSightIntelligence:
     """
     High-end AI Layer for BuildSight GeoAI.
-    Handles Moondream2 (VLM) for site narration and SAM for segmentation.
+    Handles Florence-2 (VLM) for site narration via geoai_vlm_util
+    and SAM for segmentation.
     """
     
     def __init__(self, weights_dir: str):
@@ -25,35 +38,18 @@ class BuildSightIntelligence:
         self.sam_model = None
         self.sam_predictor = None
         
-        # VLM (Moondream2) Configuration
-        self.vlm_path = os.path.join(weights_dir, "moondream2")
-        self.vlm_model = None
-        self.vlm_tokenizer = None
+        # VLM is now handled by geoai_vlm_util (Florence-2-base)
+        # No internal VLM loading — prevents double VRAM allocation
+        self._vlm_util_available = False
+        try:
+            import geoai_vlm_util
+            self._vlm_util_available = True
+            logger.info("🧠 VLM Intelligence: Delegated to geoai_vlm_util (Florence-2-base)")
+        except ImportError:
+            logger.warning("⚠️ geoai_vlm_util not importable — VLM narration disabled")
         
-        self._load_vlm() # VLM is prioritized for narration
         # SAM will be lazy-loaded to save VRAM unless needed
         
-    def _load_vlm(self):
-        """Load Moondream2 model."""
-        if not os.path.exists(self.vlm_path):
-            logger.warning(f"⚠️ Moondream2 weights not found at {self.vlm_path}. Narration disabled.")
-            return
-            
-        try:
-            from transformers import AutoModelForCausalLM, AutoTokenizer
-            logger.info(f"🧠 Loading Moondream2 on {self.device}...")
-            
-            self.vlm_model = AutoModelForCausalLM.from_pretrained(
-                self.vlm_path, 
-                trust_remote_code=True,
-                torch_dtype=torch.float16 if self.device == "cuda" else torch.float32
-            ).to(self.device)
-            
-            self.vlm_tokenizer = AutoTokenizer.from_pretrained(self.vlm_path)
-            logger.info("✅ Moondream2 Loaded Successfully.")
-        except Exception as e:
-            logger.error(f"❌ Failed to load Moondream2: {e}")
-
     def _load_sam(self):
         """Lazy load SAM."""
         if self.sam_predictor:
@@ -137,26 +133,32 @@ class BuildSightIntelligence:
 
     def narrate_frame(self, frame: np.ndarray) -> str:
         """
-        Generate a spatial narration of the current frame using VLM.
+        Generate a spatial narration of the current frame using Florence-2
+        via geoai_vlm_util (single VLM instance shared across the app).
         """
-        if not self.vlm_model:
-            return "VLM Intelligence Off"
+        if not self._vlm_util_available:
+            return "VLM Intelligence Off — geoai_vlm_util not available"
             
         try:
-            # Convert BGR CV2 frame to RGB PIL Image
-            image = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+            import geoai_vlm_util
             
-            # Optimized prompt for Indian construction sites
-            prompt = "Describe this construction site layout, focus on safety hazards, worker activity, and structural progress. Keep it professional and concise."
+            result = geoai_vlm_util.describe_frame_sync(
+                frame_bgr=frame,
+                question=(
+                    "Describe this construction site layout, focus on safety hazards, "
+                    "worker activity, and structural progress. Keep it professional and concise."
+                ),
+            )
             
-            enc_image = self.vlm_model.encode_image(image)
-            answer = self.vlm_model.answer_question(enc_image, prompt, self.vlm_tokenizer)
+            description = result.get("description", "")
+            source = result.get("source", "rule_based")
             
-            return answer
+            if description:
+                logger.debug(f"🎙️ Narration via {source}: {description[:60]}...")
+                return description
+            else:
+                return "Site activity observed. Processing vision telemetry..."
+                
         except Exception as e:
             logger.error(f"⚠️ Narration error: {e}")
             return "Narration stream interrupted."
-        finally:
-            # VRAM Safeguard: Clear CUDA cache
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()

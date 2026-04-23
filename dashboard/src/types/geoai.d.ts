@@ -273,7 +273,7 @@ export interface DynamicZoneCreate {
 export interface VLMEntry {
   description: string
   timestamp: number
-  source: 'moondream2' | 'rule_based'
+  source: 'florence2' | 'moondream2' | 'rule_based' | 'vlm_chained_with_turner_ai'
   question: string
   vlm_available: boolean
 }

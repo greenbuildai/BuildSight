@@ -4,16 +4,16 @@
   "venv": ".venv",
   "pythonPlatform": "Windows",
   "include": [
-    "dashboard/backend",
-    "dashboard/src",
-    "dashboard/backend/research_core",
-    "."
+    "e:/Company/Green Build AI/Prototypes/BuildSight/dashboard/backend",
+    "e:/Company/Green Build AI/Prototypes/BuildSight/dashboard/src",
+    "e:/Company/Green Build AI/Prototypes/BuildSight/dashboard/backend/research_core",
+    "e:/Company/Green Build AI/Prototypes/BuildSight/."
   ],
   "extraPaths": [
-    "dashboard/backend/research_core",
-    "dashboard/backend",
-    "dashboard/backend/geoai",
-    "."
+    "e:/Company/Green Build AI/Prototypes/BuildSight/dashboard/backend/research_core",
+    "e:/Company/Green Build AI/Prototypes/BuildSight/dashboard/backend",
+    "e:/Company/Green Build AI/Prototypes/BuildSight/dashboard/backend/geoai",
+    "e:/Company/Green Build AI/Prototypes/BuildSight/."
   ],
   "executionEnvironments": [
     {

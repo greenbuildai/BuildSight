@@ -12,7 +12,7 @@ OUTPUTS_DIR.mkdir(parents=True, exist_ok=True)
 UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 
 # Model Configuration
-MODEL_PATH = str(BASE_DIR / "backend/models/best.pt")
+MODEL_PATH = r"E:\Company\Green Build AI\Prototypes\BuildSight\weights\yolov26_buildsight_best.pt"
 
 # Default to the specific Trueview Camera IP provided
 # Trying standard 'admin' username with provided password

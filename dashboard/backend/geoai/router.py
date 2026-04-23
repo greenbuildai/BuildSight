@@ -18,7 +18,7 @@ Endpoints:
     PUT    /dynamic-zones/{zone_id}  — update an existing zone
     DELETE /dynamic-zones/{zone_id}  — remove a zone
 
-  VLM (Moondream2 site-description)
+  VLM (Florence-2 site-description)
     GET  /vlm/latest         — return cached description + metadata
     POST /vlm/query          — run VLM with a custom question
 
@@ -170,11 +170,16 @@ def _save_zones(zones: List[DynamicZone]) -> None:
 # ── Helpers to pull current detection stats from server.py ──────────────────
 def _get_fallback_stats() -> dict:
     """Pull live stats from detection_stats and background service."""
+    stats = {}
     try:
         import server as srv  # type: ignore
-        stats = dict(getattr(srv, "detection_stats", {}) or {})
-
-        # Also read from background service — it may be more current
+        
+        # Try detection_stats first (updated by /detect/frame endpoint)
+        ds = getattr(srv, "detection_stats", None)
+        if ds and isinstance(ds, dict) and ds.get("total_workers", 0) > 0:
+            stats = dict(ds)
+        
+        # Also check background service — it may have more current data
         bg = getattr(srv, "bg_service", None)
         if bg and getattr(bg, "is_running", False):
             bg_count = getattr(bg, "latest_worker_count", 0)
@@ -186,15 +191,16 @@ def _get_fallback_stats() -> dict:
                 stats["scene"]            = getattr(bg, "latest_scene", stats.get("scene", "S1_normal"))
                 violations = getattr(bg, "active_violations", [])
                 stats["proximity_violations"] = len(violations)
-                # Summarise violations for richer rule-based output
                 ppe_viols = [v for v in violations if "PPE" in v.get("type", "")]
                 zone_viols = [v for v in violations if "ZONE" in v.get("type", "") or "GEOFENCE" in v.get("type", "")]
                 if ppe_viols:
                     stats["ppe_violation_detail"] = f"{len(ppe_viols)} PPE violation{'s' if len(ppe_viols)!=1 else ''}"
                 if zone_viols:
                     stats["zone_breach_detail"] = f"{len(zone_viols)} restricted zone breach{'es' if len(zone_viols)!=1 else ''}"
+        
         return stats
-    except Exception:
+    except Exception as e:
+        log.warning(f"_get_fallback_stats error: {e}")
         return {}
 
 
@@ -205,6 +211,78 @@ def _get_latest_frame_jpeg() -> Optional[bytes]:
         return getattr(srv, "latest_frame_jpeg", None)
     except Exception:
         return None
+
+
+def _generate_fallback_response(stats: dict, question: str) -> str:
+    """Generate a detailed rule-based response from stats. ALWAYS returns meaningful text."""
+    workers = stats.get("total_workers", 0) 
+    helmets = stats.get("helmets_detected", 0)
+    vests = stats.get("vests_detected", 0)
+    scene = stats.get("scene", "S1_normal")
+    violations = stats.get("proximity_violations", 0)
+    q = (question or "").lower()
+    
+    # Scene condition
+    scene_desc = "Normal site conditions."
+    if "S4" in scene:
+        scene_desc = "Crowded site conditions with elevated worker density."
+    elif "S3" in scene:
+        scene_desc = "Low-light site conditions with reduced visibility."
+    elif "S2" in scene:
+        scene_desc = "Dusty site conditions with reduced visibility."
+    
+    # Handle no workers specially
+    if workers == 0:
+        if "safe" in q or "risk" in q or "hazard" in q:
+            return f"No workers currently detected. {scene_desc} Site appears stable with low risk."
+        if "happening" in q or "what" in q or "going" in q:
+            return f"No active workers in frame. {scene_desc} Site is clear."
+        return f"No workers detected. {scene_desc} Site appears stable."
+    
+    # Build response with worker data
+    parts = [f"{workers} active worker{'s' if workers != 1 else ''} detected on site."]
+    
+    # PPE compliance
+    helmet_pct = int(helmets / max(workers, 1) * 100)
+    vest_pct = int(vests / max(workers, 1) * 100)
+    
+    if helmet_pct == 100:
+        parts.append("All workers wearing helmets.")
+    elif helmet_pct >= 80:
+        parts.append(f"Helmet compliance at {helmet_pct}%.")
+    else:
+        missing = workers - helmets
+        parts.append(f"{missing} worker{'s' if missing != 1 else ''} missing helmet ({helmet_pct}% compliance).")
+    
+    if vest_pct == 100:
+        parts.append("All workers wearing high-vis vests.")
+    elif vest_pct >= 80:
+        parts.append(f"Vest compliance at {vest_pct}%.")
+    else:
+        missing_v = workers - vests
+        parts.append(f"{missing_v} worker{'s' if missing_v != 1 else ''} missing vest ({vest_pct}% compliance).")
+    
+    # Risk level
+    if violations > 0:
+        parts.append(f"WARNING: {violations} active violation{'s' if violations != 1 else ''} requiring attention.")
+    else:
+        parts.append("No active zone violations.")
+    
+    # Risk assessment
+    risk_level = "LOW"
+    if helmet_pct < 50 or vest_pct < 50:
+        risk_level = "HIGH"
+    elif helmet_pct < 80 or vest_pct < 80:
+        risk_level = "MODERATE"
+    
+    if risk_level == "HIGH":
+        parts.append("Overall site risk: HIGH - immediate action recommended.")
+    elif risk_level == "MODERATE":
+        parts.append("Overall site risk: MODERATE - monitoring recommended.")
+    else:
+        parts.append("Overall site risk: LOW - site appears safe.")
+    
+    return " ".join(parts)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -360,19 +438,28 @@ async def delete_dynamic_zone(zone_id: str):
 
 @router.get("/vlm/latest", response_model=VLMEntry)
 async def vlm_latest():
-    """Return the cached VLM description. Triggers a refresh if stale."""
-    from geoai_vlm_util import get_cached_entry, describe_frame_async, is_available  # type: ignore
+    """Return cached VLM description. Always returns meaningful response."""
+    from geoai_vlm_util import get_cached_entry, describe_frame_async, is_available
 
     entry, stale = get_cached_entry()
-    if stale or not entry:
-        stats = _get_fallback_stats()
-        jpeg = _get_latest_frame_jpeg()
-        entry = await describe_frame_async(jpeg_bytes=jpeg, fallback_stats=stats)
+    stats = _get_fallback_stats() if stale or not entry else {}
+    jpeg = _get_latest_frame_jpeg()
+    
+    entry = await describe_frame_async(jpeg_bytes=jpeg, fallback_stats=stats)
+    
+    # Get description from VLM (or fallback if empty)
+    desc = entry.get("description") or ""
+    entry_source = entry.get("source", "unknown")
+    
+    # Only use rule-based if Florence-2 actually returned nothing
+    if not desc.strip():
+        desc = _generate_fallback_response(stats or {}, "What is happening on site?")
+        entry_source = "rule_based"
 
     return VLMEntry(
-        description=entry.get("description", "No description available."),
+        description=desc,
         timestamp=entry.get("timestamp", time.time()),
-        source=entry.get("source", "rule_based"),
+        source=entry_source,
         question=entry.get("question", ""),
         vlm_available=is_available(),
     )
@@ -380,22 +467,32 @@ async def vlm_latest():
 
 @router.post("/vlm/query", response_model=VLMEntry)
 async def vlm_query(body: VLMQueryRequest):
-    """Run the VLM with a custom question on the latest frame."""
-    from geoai_vlm_util import describe_frame_async, is_available  # type: ignore
+    """Run VLM with custom question - always returns meaningful response."""
+    from geoai_vlm_util import describe_frame_async, is_available
 
-    stats = _get_fallback_stats()
+    stats = _get_fallback_stats() or {}
     jpeg = _get_latest_frame_jpeg()
+    
     entry = await describe_frame_async(
         jpeg_bytes=jpeg,
         question=body.question,
         fallback_stats=stats,
         force_refresh=body.force_refresh,
     )
+    
+    raw_description = entry.get("description") or ""
+    entry_source = entry.get("source", "unknown")
+    
+    # Only use rule-based if Florence-2 actually failed (empty response)
+    if not raw_description.strip():
+        raw_description = _generate_fallback_response(stats or {}, body.question)
+        entry_source = "rule_based"
+
     return VLMEntry(
-        description=entry.get("description", ""),
+        description=raw_description,
         timestamp=entry.get("timestamp", time.time()),
-        source=entry.get("source", "rule_based"),
-        question=entry.get("question", body.question),
+        source=entry_source,
+        question=body.question,
         vlm_available=is_available(),
     )
 
@@ -496,14 +593,51 @@ async def spatial_vlm_query(request: SpatialVLMRequest):
             point_prompt=(px, py)
         )
         
+        raw_description = result.get("description", "")
+        chained_source = result.get("source", "spatial_vlm")
+        
+        # 4. Chain Spatial Output with Turner AI
+        try:
+            import server as srv  # type: ignore
+            from fastapi.concurrency import run_in_threadpool
+            
+            prompt = (
+                f"You are Turner AI, the Chief AI Supervisor.\n"
+                f"The user clicked on a specific map coordinate (Lat {request.lat}, Lon {request.lon}).\n"
+                f"User Question: '{request.question}'\n"
+                f"Optical VLM cropped scene analysis: {raw_description}\n\n"
+                f"Provide a confident, spatial-aware response explaining what's happening at this exact location. "
+                f"Keep it under 3 sentences and sound like a seasoned site manager."
+            )
+            
+            supervisor_response = None
+            if getattr(srv, "mistral_enabled", False):
+                messages = [{"role": "system", "content": getattr(srv, "TURNER_SYSTEM_PROMPT", "")}, {"role": "user", "content": prompt}]
+                try:
+                    resp = await run_in_threadpool(srv._call_mistral_sync, messages)
+                    supervisor_response = resp.strip()
+                except Exception as e:
+                    log.warning(f"Mistral Turner AI spatial chain failed: {e}")
+                    
+            if not supervisor_response and getattr(srv, "ai_model", None):
+                resp = await run_in_threadpool(srv.ai_model.generate_content, prompt)
+                supervisor_response = resp.text.strip()
+                
+            if supervisor_response:
+                raw_description = f"[Turner AI] {supervisor_response}"
+                chained_source = "spatial_turner_ai"
+                
+        except Exception as e:
+            log.error(f"Turner AI reasoning failed for spatial query: {e}")
+            
         inference_ms = (time.time() - start_time) * 1000
         
         return SpatialVLMResponse(
-            description=result["description"],
+            description=raw_description,
             lat=request.lat,
             lon=request.lon,
             timestamp=result["timestamp"],
-            source=result["source"],
+            source=chained_source,
             avg_inference_ms=inference_ms,
             status="ready"
         )

@@ -22,7 +22,8 @@ def init_db():
             unsafe_proximity_count INTEGER,
             site_condition TEXT,
             zone_stats TEXT,
-            violation_stats TEXT
+            violation_stats TEXT,
+            worker_stats TEXT
         )
     ''')
     
@@ -33,6 +34,8 @@ def init_db():
         cursor.execute("ALTER TABLE metrics ADD COLUMN zone_stats TEXT")
     if 'violation_stats' not in columns:
         cursor.execute("ALTER TABLE metrics ADD COLUMN violation_stats TEXT")
+    if 'worker_stats' not in columns:
+        cursor.execute("ALTER TABLE metrics ADD COLUMN worker_stats TEXT")
 
     # Alert history
     cursor.execute('''
@@ -76,18 +79,19 @@ def get_db_connection():
     conn.row_factory = sqlite3.Row
     return conn
 
-def log_metrics(worker_count, helmet_count, vest_count, compliance_score, unsafe_proximity=0, condition="normal", zone_stats=None, violation_stats=None):
+def log_metrics(worker_count, helmet_count, vest_count, compliance_score, unsafe_proximity=0, condition="normal", zone_stats=None, violation_stats=None, worker_stats=None):
     conn = get_db_connection()
     cursor = conn.cursor()
     
     # Convert dicts to JSON strings if provided
     zs = json.dumps(zone_stats) if zone_stats else "{}"
     vs = json.dumps(violation_stats) if violation_stats else "{}"
+    ws = json.dumps(worker_stats) if worker_stats else "{}"
     
     cursor.execute('''
-        INSERT INTO metrics (worker_count, helmet_count, vest_count, compliance_score, unsafe_proximity_count, site_condition, zone_stats, violation_stats)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    ''', (worker_count, helmet_count, vest_count, compliance_score, unsafe_proximity, condition, zs, vs))
+        INSERT INTO metrics (worker_count, helmet_count, vest_count, compliance_score, unsafe_proximity_count, site_condition, zone_stats, violation_stats, worker_stats)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ''', (worker_count, helmet_count, vest_count, compliance_score, unsafe_proximity, condition, zs, vs, ws))
     conn.commit()
     conn.close()
 

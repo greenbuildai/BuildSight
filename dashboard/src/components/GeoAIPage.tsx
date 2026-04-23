@@ -11,6 +11,10 @@ import { useSettings } from '../SettingsContext'
 import { useDetectionStore } from '../store/detectionStore'
 import './GeoAIPage.css'
 
+function isOpticalVlmSource(source: string | undefined): boolean {
+  return source === 'florence2' || source === 'moondream2' || source === 'vlm_chained_with_turner_ai'
+}
+
 const MODE_META: Record<GeoAIMode, { label: string; detail: string; badge: string }> = {
   HEATMAP: {
     label: 'Live risk density',
@@ -74,7 +78,6 @@ export function GeoAIPage() {
   const detectionWorkers    = useDetectionStore(s => s.workerPositions)
   const detectionViolations = useDetectionStore(s => s.violations)
   const bgWorkerCount       = useDetectionStore(s => s.workerCount)
-  const bgIsConnected       = useDetectionStore(s => s.isConnected)
   const bgIsRunning         = useDetectionStore(s => s.isRunning)
   const bgCompliance        = useDetectionStore(s => s.workerPositions.length > 0
     ? Math.round((s.workerPositions.filter(w => w.ppe_compliant).length / s.workerPositions.length) * 100)
@@ -443,7 +446,19 @@ export function GeoAIPage() {
             <div className="geoai-command-card" style={{ padding: '1rem', borderBottom: '1px solid var(--color-border)', background: 'rgba(10,12,16,0.6)' }}>
               <p className="geoai-command-card__eyebrow" style={{ marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 <span>AI Scene Analysis</span>
-                {vlmEntry && <span style={{ fontSize: '10px', padding: '2px 6px', borderRadius: 4, background: vlmEntry.source === 'moondream2' ? 'rgba(0,200,100,0.15)' : 'rgba(255,200,0,0.15)', color: vlmEntry.source === 'moondream2' ? '#00c864' : '#ffd600' }}>{vlmEntry.source === 'moondream2' ? 'VLM' : 'Rule-based'}</span>}
+                {vlmEntry && (
+                  <span
+                    style={{
+                      fontSize: '10px',
+                      padding: '2px 6px',
+                      borderRadius: 4,
+                      background: isOpticalVlmSource(vlmEntry.source) ? 'rgba(0,200,100,0.15)' : 'rgba(255,200,0,0.15)',
+                      color: isOpticalVlmSource(vlmEntry.source) ? '#00c864' : '#ffd600',
+                    }}
+                  >
+                    {isOpticalVlmSource(vlmEntry.source) ? 'VLM' : 'Rule-based'}
+                  </span>
+                )}
                 {vlmLoading && <span style={{ fontSize: '10px', color: 'var(--color-muted)' }}>updating…</span>}
               </p>
               <p style={{ fontSize: '12px', lineHeight: 1.5, color: 'var(--color-text)', margin: '0 0 0.7rem', minHeight: '3em' }}>

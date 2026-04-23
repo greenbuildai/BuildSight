@@ -215,22 +215,39 @@ class GeoAIPipeline:
             self.ws_conn = None 
 
     async def _narration_loop(self):
-        """Background loop for VLM site narration."""
-        logger.info("🎙️ Narration Intelligence Loop Started.")
+        """Background loop for VLM site narration via Florence-2 (geoai_vlm_util)."""
+        logger.info("🎙️ Narration Intelligence Loop Started (Florence-2).")
         while True:
             try:
                 if self.latest_frame is not None and (time.time() - self.last_narration_time > self.narration_interval):
-                    logger.info("🧠 Generating Spatial Narration...")
-                    narration = self.intel.narrate_frame(self.latest_frame)
+                    logger.info("🧠 Generating Spatial Narration via Florence-2...")
+                    
+                    # Use geoai_vlm_util for single-instance VLM (no double VRAM load)
+                    try:
+                        from geoai_vlm_util import describe_frame_sync
+                        result = describe_frame_sync(
+                            frame_bgr=self.latest_frame,
+                            question=(
+                                "Describe this construction site layout, focus on safety hazards, "
+                                "worker activity, and structural progress."
+                            ),
+                        )
+                        narration = result.get("description", "Site activity under analysis.")
+                        source = result.get("source", "rule_based")
+                    except Exception as vlm_err:
+                        logger.warning(f"⚠️ VLM narration failed ({vlm_err}), using intelligence fallback.")
+                        narration = self.intel.narrate_frame(self.latest_frame)
+                        source = "fallback"
                     
                     if self.use_ws and self.ws_conn:
                         payload = {
                             "type": "spatial_narration",
                             "text": narration,
+                            "source": source,
                             "timestamp": datetime.now().isoformat()
                         }
                         await self.ws_conn.send(json.dumps(payload))
-                        logger.info(f"🎙️ Narration Broadcasted: {narration[:50]}...")
+                        logger.info(f"🎙️ Narration Broadcasted ({source}): {narration[:50]}...")
                     
                     self.last_narration_time = time.time()
             except Exception as e:

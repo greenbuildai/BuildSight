@@ -11,6 +11,10 @@ import './VLMActivityFeed.css'
 const API_BASE = 'http://localhost:8000/api/geoai'
 const VLM_POLL_MS = 10_000
 
+function isOpticalVlmSource(source: string): boolean {
+  return source === 'florence2' || source === 'moondream2' || source === 'vlm_chained_with_turner_ai'
+}
+
 interface FeedItem {
   id: number
   entry: VLMEntry
@@ -96,7 +100,7 @@ export function VLMActivityFeed() {
     })
 
   const sourceLabel = (src: string) =>
-    src === 'moondream2' ? 'MOONDREAM2' : 'RULE-BASED'
+    isOpticalVlmSource(src) ? 'VLM' : 'RULE-BASED'
 
   // ── Risk keyword highlighting ─────────────────────────────────────────────
   const highlightText = (text: string) => {
@@ -147,7 +151,7 @@ export function VLMActivityFeed() {
           <div key={item.id} className="vlm-entry">
             <div className="vlm-entry__meta">
               <span className="vlm-entry__time">{formatTime(item.entry.timestamp)}</span>
-              <span className={`vlm-entry__source ${item.entry.source === 'moondream2' ? 'vlm-entry__source--vlm' : ''}`}>
+              <span className={`vlm-entry__source ${isOpticalVlmSource(item.entry.source) ? 'vlm-entry__source--vlm' : ''}`}>
                 {sourceLabel(item.entry.source)}
               </span>
             </div>

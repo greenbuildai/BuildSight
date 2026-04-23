@@ -741,9 +741,13 @@ function VideoUploadMode() {
       return
     }
 
-    const dw = video.clientWidth || canvas.width
-    const dh = video.clientHeight || canvas.height
-    if (dw > 0 && (canvas.width !== dw || canvas.height !== dh)) {
+    // CRITICAL: Ensure canvas dimensions match video display size exactly
+    // This fixes issues where bounding boxes don't appear due to dimension mismatches
+    const dw = video.clientWidth || video.offsetWidth || 640
+    const dh = video.clientHeight || video.offsetHeight || 360
+    
+    // Only resize if dimensions actually changed
+    if (canvas.width !== dw || canvas.height !== dh) {
       canvas.width = dw
       canvas.height = dh
     }
@@ -752,20 +756,72 @@ function VideoUploadMode() {
     if (!ctx) { rafRef.current = requestAnimationFrame(drawOverlay); return }
     ctx.clearRect(0, 0, canvas.width, canvas.height)
 
-    const { rw, rh, ox, oy } = _letterbox(video.videoWidth, video.videoHeight, canvas.width, canvas.height)
+    // Skip drawing if no video source yet
+    if (!video.videoWidth || !video.videoHeight || isNaN(video.videoWidth) || isNaN(video.videoHeight)) {
+      rafRef.current = requestAnimationFrame(drawOverlay)
+      return
+    }
 
+    const { rw, rh, ox, oy } = _letterbox(video.videoWidth, video.videoHeight, canvas.width, canvas.height)
+    
     // Compute inference frame dimensions matching DetectionStatsContext (max 640 on longest side)
     const MAX_INFER = 640
     const vw = video.videoWidth  || 640
     const vh = video.videoHeight || 360
     const inferScale = Math.min(1, MAX_INFER / Math.max(vw, vh, 1))
     const fw = Math.max(1, Math.round(vw * inferScale))
-    const fh = Math.max(1, Math.round(vh * inferScale))
+const fh = Math.max(1, Math.round(vh * inferScale))
 
     // Always read fresh state to avoid stale closure issues
     const st = useDetectionStore.getState()
     const currentDetections = st.detections
     const currentRoiPoly = st.roiPoly
+    
+    // ── Draw detections DIRECTLY without tracking transformation ─────────────────
+    // This ensures boxes appear immediately without waiting for track initialization
+    if (currentDetections && currentDetections.length > 0) {
+      for (const det of currentDetections) {
+        const box = det.box
+        if (!box || box.length < 4) continue
+        
+        // Directly scale box coordinates to display canvas
+        const x1 = (box[0] / fw) * rw + ox
+        const y1 = (box[1] / fh) * rh + oy
+        const x2 = (box[2] / fw) * rw + ox
+        const y2 = (box[3] / fh) * rh + oy
+        
+        // Determine box color
+        const isWorker = det.class === 'worker' || det.class === 'person'
+        let borderCol = '#00c864' // green for worker by default
+        if (isWorker) {
+          if (det.has_helmet === true && det.has_vest === true) {
+            borderCol = '#00c864' // green - compliant
+          } else if (det.has_helmet === false && det.has_vest === false) {
+            borderCol = '#ff2a2a' // red - full violation
+          } else {
+            borderCol = '#ffaa00' // orange - partial
+          }
+        } else if (det.class === 'helmet') {
+          borderCol = '#ffd600'
+        } else if (det.class === 'safety_vest' || det.class === 'vest') {
+          borderCol = '#00bfff'
+        }
+        
+        // Draw the box
+        ctx.strokeStyle = borderCol
+        ctx.lineWidth = 3
+        ctx.strokeRect(x1, y1, x2 - x1, y2 - y1)
+        
+        // Draw label
+        const conf = Math.round(det.confidence * 100)
+        const label = `${det.class} ${conf}%`
+        ctx.font = 'bold 14px monospace'
+        ctx.fillStyle = borderCol
+        ctx.fillRect(x1, Math.max(0, y1 - 20), ctx.measureText(label).width + 10, 20)
+        ctx.fillStyle = '#000'
+        ctx.fillText(label, x1 + 5, Math.max(14, y1 - 4))
+      }
+    }
 
     // ── Draw ROI ─────────────────────────────────────────────────────────────
     if (currentRoiPoly && currentRoiPoly.length >= 2) {
@@ -792,65 +848,9 @@ function VideoUploadMode() {
       heatmapHistoryRef.current = drawHeatmap(ctx, heatmapHistoryRef.current, performance.now(), rw, rh, ox, oy)
     }
 
-    // ── Bounding box tracks ───────────────────────────────────────────────────
-    const activeTracks = mergeTracks(tracksRef.current, currentDetections)
-    tracksRef.current = activeTracks
-
-    const LERP = 0.55
-    for (const t of activeTracks) {
-      const [x1, y1, x2, y2] = t.frameBox
-      const tx1 = (x1 / fw) * rw + ox
-      const ty1 = (y1 / fh) * rh + oy
-      const tx2 = (x2 / fw) * rw + ox
-      const ty2 = (y2 / fh) * rh + oy
-
-      if (!t.initialized) {
-        t.sx1 = tx1; t.sy1 = ty1; t.sx2 = tx2; t.sy2 = ty2
-        t.initialized = true
-      } else {
-        t.sx1 += (tx1 - t.sx1) * LERP
-        t.sy1 += (ty1 - t.sy1) * LERP
-        t.sx2 += (tx2 - t.sx2) * LERP
-        t.sy2 += (ty2 - t.sy2) * LERP
-      }
-
-      const isWorkerBox = t.cls === 'worker' || t.cls === 'person'
-      let borderCol = CLASS_COLORS[t.cls] ?? '#aaaaaa'
-      if (isWorkerBox) {
-        if (t.has_helmet === true && t.has_vest === true) {
-          borderCol = '#00c864'   // green — compliant
-        } else if (t.has_helmet === false && t.has_vest === false) {
-          borderCol = '#ff2a2a'   // red — full violation
-        } else {
-          borderCol = '#ffaa00'   // orange — partial
-        }
-      }
-
-      ctx.globalAlpha = t.missed > 0 ? 0.4 : 1.0
-      ctx.shadowColor = borderCol
-      ctx.shadowBlur = isWorkerBox ? 8 : 4
-      ctx.strokeStyle = borderCol
-      ctx.lineWidth = isWorkerBox ? 3 : 2
-      ctx.strokeRect(t.sx1, t.sy1, t.sx2 - t.sx1, t.sy2 - t.sy1)
-      ctx.shadowBlur = 0
-
-      const helmBadge = isWorkerBox ? (t.has_helmet === false ? ' ⚠H' : '') : ''
-      const vestBadge = isWorkerBox ? (t.has_vest   === false ? ' ⚠V' : '') : ''
-      const label = isWorkerBox
-        ? `W ${(t.confidence * 100).toFixed(0)}%${helmBadge}${vestBadge}`
-        : `${t.cls} ${(t.confidence * 100).toFixed(0)}%`
-      ctx.font = 'bold 10px monospace'
-      const tw = ctx.measureText(label).width
-      ctx.fillStyle = borderCol
-      ctx.globalAlpha = t.missed > 0 ? 0.3 : 0.88
-      ctx.fillRect(t.sx1, Math.max(0, t.sy1 - 16), tw + 8, 16)
-      ctx.globalAlpha = 1
-      ctx.fillStyle = isWorkerBox ? '#000' : '#fff'
-      ctx.fillText(label, t.sx1 + 4, Math.max(12, t.sy1 - 3))
-    }
-
+    // Always continue the animation loop
     rafRef.current = requestAnimationFrame(drawOverlay)
-  }, []) // stable — reads all live state via refs / getState()
+  }, []) // end drawOverlay
 
   // Start/stop the RAF based on play state; restarts cleanly after tab remount
   useEffect(() => {
@@ -1211,13 +1211,26 @@ export function LiveMode() {
     const video = videoRef.current
     if (!canvas || !video) return
 
-    const dw = video.clientWidth
-    const dh = video.clientHeight
-    if (canvas.width !== dw) canvas.width = dw
-    if (canvas.height !== dh) canvas.height = dh
+    // CRITICAL: Ensure canvas dimensions match video display size
+    // This fixes bounding boxes not appearing due to dimension mismatches
+    const dw = video.clientWidth || video.offsetWidth || 640
+    const dh = video.clientHeight || video.offsetHeight || 360
+    
+    if (canvas.width !== dw || canvas.height !== dh) {
+      canvas.width = dw
+      canvas.height = dh
+      // Re-initialize tracks on resize
+      tracksRef.current.forEach(t => { t.initialized = false })
+    }
 
     const ctx = canvas.getContext('2d')!
     ctx.clearRect(0, 0, dw, dh)
+
+    // Skip if video not ready
+    if (!video.videoWidth || !video.videoHeight || isNaN(video.videoWidth)) {
+      rafRef.current = requestAnimationFrame(drawOverlay)
+      return
+    }
 
     const { rw, rh, ox, oy } = _letterbox(video.videoWidth, video.videoHeight, dw, dh)
     const fw = frameWRef.current

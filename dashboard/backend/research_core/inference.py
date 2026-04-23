@@ -52,7 +52,9 @@ class InferenceService:
         results = self.model.track(frame, persist=True, verbose=False, tracker="bytetrack.yaml")
 
         # Diagnostic logging
-        logger.info(f"[YOLO] Frame {frame_id}: Detected {len(results[0].boxes)} total objects")
+        first_boxes = results[0].boxes if results else None
+        total_objects = len(first_boxes) if first_boxes is not None else 0
+        logger.info(f"[YOLO] Frame {frame_id}: Detected {total_objects} total objects")
 
         persons = []
         helmets = []
@@ -62,6 +64,8 @@ class InferenceService:
         class_counts = {}
         for r in results:
             boxes = r.boxes
+            if boxes is None:
+                continue
             for box in boxes:
                 cls_id = int(box.cls[0])
                 cls_name = self.class_names.get(cls_id, "Unknown")

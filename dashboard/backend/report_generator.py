@@ -104,6 +104,26 @@ def generate_daily_report(site_name, date_str, data):
     
     pdf.ln(35)
     
+    # --- AI EXECUTIVE NARRATIVE ---
+    ai_data = data.get("ai_narrative")
+    if ai_data:
+        pdf.chapter_title("Turner AI Executive Narrative")
+        pdf.set_font('Helvetica', 'B', 10)
+        pdf.set_text_color(44, 62, 80)
+        pdf.cell(0, 6, f"Confidence Score: {ai_data.get('confidence', 0)}/100", 0, 1)
+        pdf.ln(2)
+        
+        pdf.set_font('Helvetica', '', 10)
+        pdf.set_text_color(52, 73, 94)
+        pdf.multi_cell(0, 6, str(ai_data.get('summary', '')))
+        pdf.ln(4)
+        
+        pdf.set_font('Helvetica', 'B', 10)
+        pdf.cell(0, 6, "Supervisor Detailed Commentary:", 0, 1)
+        pdf.set_font('Helvetica', '', 10)
+        pdf.multi_cell(0, 6, str(ai_data.get('detailed_commentary', '')))
+        pdf.ln(10)
+    
     # --- RISK BY ZONE ---
     pdf.chapter_title("Safety Risk by Zone")
     
@@ -112,9 +132,10 @@ def generate_daily_report(site_name, date_str, data):
     pdf.set_fill_color(236, 240, 241)
     pdf.set_text_color(44, 62, 80)
     pdf.cell(60, 10, " Zone Name", 0, 0, 'L', True)
-    pdf.cell(40, 10, " Worker Count", 0, 0, 'C', True)
-    pdf.cell(40, 10, " Violations", 0, 0, 'C', True)
-    pdf.cell(50, 10, " Risk Level ", 0, 1, 'R', True)
+    pdf.cell(30, 10, " Activity", 0, 0, 'C', True)
+    pdf.cell(30, 10, " Violations", 0, 0, 'C', True)
+    pdf.cell(30, 10, " Comp %", 0, 0, 'C', True)
+    pdf.cell(40, 10, " Risk Level ", 0, 1, 'R', True)
     
     # Table Data
     pdf.set_font('Helvetica', '', 10)
@@ -125,12 +146,14 @@ def generate_daily_report(site_name, date_str, data):
         pdf.cell(0, 10, "No zone data available for this period.", 0, 1, 'C')
     else:
         for zone in zones:
-            pdf.cell(60, 10, f" {zone['name']}", 'B', 0, 'L')
-            pdf.cell(40, 10, str(zone['workers']), 'B', 0, 'C')
-            pdf.cell(40, 10, str(zone['violations']), 'B', 0, 'C')
+            pdf.cell(60, 10, f" {zone.get('zone_name', 'Unknown')}", 'B', 0, 'L')
+            pdf.cell(30, 10, str(zone.get('activity', 0)), 'B', 0, 'C')
+            pdf.cell(30, 10, str(zone.get('violations', 0)), 'B', 0, 'C')
+            comp = zone.get('compliance_pct', 100)
+            pdf.cell(30, 10, f"{comp}%", 'B', 0, 'C')
             
             # Risk Level Color coding
-            risk = zone.get('risk', 'Low')
+            risk = zone.get('risk_level', 'Low')
             if risk == 'High':
                 pdf.set_text_color(231, 76, 60)
             elif risk == 'Medium':
@@ -138,10 +161,11 @@ def generate_daily_report(site_name, date_str, data):
             else:
                 pdf.set_text_color(46, 204, 113)
             
-            pdf.cell(50, 10, f"{risk} ", 'B', 1, 'R')
+            pdf.cell(40, 10, f"{risk} ", 'B', 1, 'R')
             pdf.set_text_color(52, 73, 94) # Reset
             
     pdf.ln(10)
+
     
     # --- VIOLATION BREAKDOWN ---
     pdf.chapter_title("Violation Distribution")
@@ -166,21 +190,76 @@ def generate_daily_report(site_name, date_str, data):
             
     pdf.ln(10)
     
-    # --- INCIDENT LOG ---
-    pdf.chapter_title("Recent Alerts & Incidents")
+    # --- INCIDENT LOG & HOURLY TRENDS ---
+    pdf.chapter_title("Recent Alerts & Hourly Safety Trends")
+    
+    # Hourly Trends Table
+    trends = data.get("hourly_trends", [])
+    if trends:
+        pdf.set_font('Helvetica', 'B', 9)
+        pdf.set_fill_color(248, 249, 250)
+        pdf.cell(40, 8, " Time", 'B', 0, 'L', True)
+        pdf.cell(40, 8, " Active Workers", 'B', 0, 'C', True)
+        pdf.cell(40, 8, " Violations", 'B', 0, 'C', True)
+        pdf.cell(40, 8, " Period Risk", 'B', 1, 'C', True)
+        
+        pdf.set_font('Helvetica', '', 9)
+        for t in trends:
+            pdf.cell(40, 8, f"  {t.get('hour', '')}", 'B', 0, 'L')
+            pdf.cell(40, 8, str(t.get('workers', 0)), 'B', 0, 'C')
+            pdf.cell(40, 8, str(t.get('violations', 0)), 'B', 0, 'C')
+            
+            risk = t.get('risk', 'Low')
+            if risk in ['High', 'Critical']:
+                pdf.set_text_color(231, 76, 60)
+            elif risk == 'Medium':
+                pdf.set_text_color(241, 196, 15)
+            else:
+                pdf.set_text_color(46, 204, 113)
+                
+            pdf.cell(40, 8, risk, 'B', 1, 'C')
+            pdf.set_text_color(52, 73, 94)
+            
+        pdf.ln(5)
     
     log = data.get("incidents", [])
     if not log:
         pdf.set_font('Helvetica', 'I', 10)
         pdf.cell(0, 10, "No incidents reported.", 0, 1, 'L')
     else:
+        pdf.set_font('Helvetica', 'B', 9)
+        pdf.cell(0, 8, "Latest Incident Logs:", 0, 1)
         pdf.set_font('Helvetica', '', 9)
         for entry in log:
-            # Bullet point and entry
             pdf.set_text_color(231, 76, 60) # Red bullet
             pdf.cell(5, 6, chr(149), 0, 0)
             pdf.set_text_color(52, 73, 94)
             pdf.cell(0, 6, f"[{entry.get('time', '--:--')}] {entry.get('zone', 'Global')}: {entry.get('message', '')}", 0, 1)
+            
+    pdf.ln(10)
+    
+    # --- WORKER INTELLIGENCE ---
+    pdf.chapter_title("Worker Intelligence & Repeat Offenders")
+    wi = data.get("worker_intelligence", [])
+    if not wi:
+        pdf.set_font('Helvetica', 'I', 10)
+        pdf.cell(0, 10, "No persistent repeat offenders tracked locally.", 0, 1, 'C')
+    else:
+        pdf.set_font('Helvetica', 'B', 9)
+        pdf.set_fill_color(236, 240, 241)
+        pdf.cell(40, 8, " Worker Track ID", 0, 0, 'C', True)
+        pdf.cell(30, 8, " Offenses", 0, 0, 'C', True)
+        pdf.cell(60, 8, " Primary Offense Pattern", 0, 0, 'C', True)
+        pdf.cell(40, 8, " Time in Unsafe Zones", 0, 1, 'C', True)
+        
+        pdf.set_font('Helvetica', '', 9)
+        for w in wi:
+            pdf.cell(40, 8, str(w.get('worker_id', '')), 'B', 0, 'C')
+            pdf.set_text_color(231, 76, 60)
+            pdf.cell(30, 8, str(w.get('offenses', 0)), 'B', 0, 'C')
+            pdf.set_text_color(52, 73, 94)
+            pdf.cell(60, 8, str(w.get('primary_offense', '')), 'B', 0, 'C')
+            pdf.cell(40, 8, str(w.get('time_in_unsafe', '')), 'B', 1, 'C')
 
     # Save to buffer
     return pdf.output()

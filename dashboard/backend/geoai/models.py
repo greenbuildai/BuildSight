@@ -71,7 +71,7 @@ class VLMEntry(BaseModel):
     """A single VLM site-description entry."""
     description: str
     timestamp: float
-    source: str          # "moondream2" | "rule_based"
+    source: str          # "florence2" | "rule_based" | "vlm_chained_with_turner_ai"
     question: str
     vlm_available: bool
 

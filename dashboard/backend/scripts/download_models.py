@@ -1,3 +1,14 @@
+"""
+BuildSight — Model Download Script
+====================================
+Downloads intelligence model weights:
+  1. SAM (vit_b) for segmentation
+  2. Florence-2-base for VLM narration (from HuggingFace Hub)
+
+Note: Florence-2-base will auto-download from HF cache on first use
+via geoai_vlm_util.py. This script pre-downloads it for offline use.
+"""
+
 import os
 import requests
 from tqdm import tqdm
@@ -8,10 +19,9 @@ import torch
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 WEIGHTS_DIR = os.path.join(BASE_DIR, "weights")
 SAM_PATH = os.path.join(WEIGHTS_DIR, "sam_vit_b.pth")
-VLM_PATH = os.path.join(WEIGHTS_DIR, "moondream2")
 
 SAM_URL = "https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth"
-VLM_REPO = "vikhyatk/moondream2"
+VLM_REPO = "microsoft/Florence-2-base"
 
 def download_file(url, path):
     print(f"Downloading {url} to {path}...")
@@ -41,12 +51,16 @@ def main():
     else:
         print(f"SAM already exists at {SAM_PATH}")
 
-    # 2. Download Moondream2 (VLM)
-    if not os.path.exists(VLM_PATH):
-        print(f"Downloading Moondream2 (VLM) snapshot to {VLM_PATH}...")
-        snapshot_download(repo_id=VLM_REPO, local_dir=VLM_PATH, revision="2024-03-06")
-    else:
-        print(f"VLM already exists at {VLM_PATH}")
+    # 2. Pre-download Florence-2-base to HF cache
+    # Florence-2 will be loaded from HF cache by geoai_vlm_util.py at runtime.
+    # This just ensures the weights are cached for offline/air-gapped use.
+    print(f"Pre-downloading Florence-2-base ({VLM_REPO}) to HuggingFace cache...")
+    try:
+        snapshot_download(repo_id=VLM_REPO, revision="main")
+        print("Florence-2-base cached successfully.")
+    except Exception as e:
+        print(f"Warning: Could not pre-download Florence-2-base: {e}")
+        print("The model will be downloaded automatically on first use.")
 
     print("\n[SUCCESS] Intelligence models downloaded.")
 
