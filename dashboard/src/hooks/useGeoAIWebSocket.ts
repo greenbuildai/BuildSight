@@ -15,9 +15,9 @@ const WS_URL = 'ws://localhost:8765'
 const DEMO_FALLBACK_MS = 4000
 const DEMO_TICK_MS = 2000
 
-/* ── Site coordinates (from SITE_CONFIG in heatmap engine) ───────────── */
-const SW_LAT = 10.81658333
-const SW_LON = 78.66873333
+/* ── Site coordinates — must match SITE_CONFIG in spatial_mapper.py ──── */
+const SW_LAT = 10.816539
+const SW_LON = 78.668835
 
 type ConnectionState = 'connecting' | 'live' | 'demo' | 'disconnected'
 
@@ -35,10 +35,10 @@ interface GeoAIState {
 /* ── Demo data generators (ported from buildsight_heatmap_viz.html) ──── */
 
 const DEMO_WORKERS: WorkerPosition[] = [
-  { lat: 10.81665, lon: 78.66880, ppe_ok: false, has_helmet: false, has_vest: true,  zone: 'high_risk_scaffolding', risk: 'HIGH',     height_m: 5.2, worker_id: 1, status: 'AT_RISK',  dwell_time_s: 45, dwell_severity: 'LOW',  camera_id: 'CAM-01' },
-  { lat: 10.81660, lon: 78.66878, ppe_ok: true,  has_helmet: true,  has_vest: true,  zone: 'moderate_risk_interior', risk: 'MODERATE', height_m: 1.8, worker_id: 2, status: 'SAFE',     dwell_time_s: 0,  dwell_severity: 'NONE', camera_id: 'CAM-01' },
-  { lat: 10.81663, lon: 78.66882, ppe_ok: true,  has_helmet: true,  has_vest: true,  zone: 'moderate_risk_interior', risk: 'MODERATE', height_m: 2.1, worker_id: 3, status: 'SAFE',     dwell_time_s: 12, dwell_severity: 'NONE', camera_id: 'CAM-02' },
-  { lat: 10.81667, lon: 78.66875, ppe_ok: false, has_helmet: true,  has_vest: false, zone: 'high_risk_staircase',    risk: 'CRITICAL', height_m: 5.8, worker_id: 4, status: 'CRITICAL', dwell_time_s: 85, dwell_severity: 'MEDIUM', camera_id: 'CAM-01' },
+  { lat: 10.81663, lon: 78.66892, ppe_ok: false, has_helmet: false, has_vest: true, zone: 'high_risk_scaffolding', risk: 'HIGH', height_m: 5.2, worker_id: 1, status: 'AT_RISK', dwell_time_s: 45, dwell_severity: 'LOW', camera_id: 'CAM-01' },
+  { lat: 10.81662, lon: 78.66891, ppe_ok: true, has_helmet: true, has_vest: true, zone: 'moderate_risk_interior', risk: 'MODERATE', height_m: 1.8, worker_id: 2, status: 'SAFE', dwell_time_s: 0, dwell_severity: 'NONE', camera_id: 'CAM-01' },
+  { lat: 10.81663, lon: 78.66894, ppe_ok: true, has_helmet: true, has_vest: true, zone: 'moderate_risk_interior', risk: 'MODERATE', height_m: 2.1, worker_id: 3, status: 'SAFE', dwell_time_s: 12, dwell_severity: 'NONE', camera_id: 'CAM-02' },
+  { lat: 10.81666, lon: 78.66886, ppe_ok: false, has_helmet: true, has_vest: false, zone: 'high_risk_staircase', risk: 'CRITICAL', height_m: 5.8, worker_id: 4, status: 'CRITICAL', dwell_time_s: 85, dwell_severity: 'MEDIUM', camera_id: 'CAM-01' },
 ]
 
 const round6 = (n: number) => Math.round(n * 1e6) / 1e6
@@ -202,11 +202,11 @@ function buildDemoKPI(): KPISummary {
 
 function buildDemoHealth(): BackendHealth[] {
   return [
-    { service: 'PostGIS',       status: 'DEGRADED', buffer_workers: 12, buffer_events: 5 },
+    { service: 'PostGIS', status: 'DEGRADED', buffer_workers: 12, buffer_events: 5 },
     { service: 'SpatialMapper', status: 'LINEAR_FALLBACK' },
-    { service: 'WebSocket',     status: 'HEALTHY' },
-    { service: 'Pipeline',      status: 'HEALTHY' },
-    { service: 'GEE',           status: 'UNAVAILABLE' },
+    { service: 'WebSocket', status: 'HEALTHY' },
+    { service: 'Pipeline', status: 'HEALTHY' },
+    { service: 'GEE', status: 'UNAVAILABLE' },
   ]
 }
 

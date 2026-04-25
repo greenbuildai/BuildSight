@@ -1,15 +1,30 @@
 # Handoff.md — Task Execution Protocol
 
 ## Purpose
-This file serves as the communication channel between **Jovi (Planner)** and the **Execution Team** (Theo + Leon).
+This file serves as the communication channel between **Jovi (Planner)** and the **Execution Team** (Toni + Leon + Theo).
+Jovi defines goals. Toni leads execution. Leon is secondary executor. Theo handles optimization last.
+
+---
+
+## Agent Hierarchy
+
+```
+Jovi (Planner)
+ └── Toni / Claude    → Main Executor (1st)         — leads all task execution
+ └── Leon             → Secondary Executor (2nd)     — takes over when Toni is unavailable
+ └── Theo / OpenCode  → Tertiary Executor (3rd)      — optimization, refactoring, validation
+```
 
 ---
 
 ## Team Status
 
-- **Toni (Claude)**: Primary executor — weekly limit exhausted (temporarily unavailable)
-- **Leon**: Active coding agent — executing tasks until Toni returns
-- **Theo**: Optimizing and coordinating
+| Agent | Role | Priority | Status |
+|-------|------|----------|--------|
+| **Jovi** | Planner — defines goals, priorities, and architecture | — | ✅ Active |
+| **Toni (Claude)** | Main executor — leads all task execution | 1st | ✅ Active |
+| **Leon** | Secondary executor — takes over when Toni is unavailable | 2nd | ✅ Active |
+| **Theo (OpenCode)** | Tertiary executor — optimization, refactoring, validation | 3rd | ✅ Active |
 
 ---
 
@@ -17,10 +32,29 @@ This file serves as the communication channel between **Jovi (Planner)** and the
 
 | Role | Responsibility |
 |------|----------------|
-| **Jovi** | Planner — defines goals, requirements, and priorities |
-| **Theo** | Optimization & Execution Agent — analyzes, optimizes, validates, and coordinates |
-| **Leon** | Coding agent — executes technical tasks |
-| **Toni (Claude)** | Primary executor — was handling execution but limit exhausted |
+| **Jovi** | Planner — defines goals, requirements, priorities. Does NOT write code. |
+| **Toni (Claude)** | Main executor — owns the task pipeline, makes execution decisions, coordinates the team. |
+| **Leon** | Secondary executor — steps in when Toni is unavailable. Handles implementation and coding tasks. |
+| **Theo (OpenCode)** | Tertiary executor — activated last. Handles optimization, profiling, refactoring, and code quality validation. Has his own `theo_handoff.md` task file. |
+
+---
+
+## Execution Flow
+
+```
+Jovi defines task
+   ↓
+Toni receives & leads execution  (1st priority)
+   ↓  [if Toni unavailable]
+Leon steps in as secondary executor  (2nd priority)
+   ↓  [after Toni/Leon complete]
+Theo optimizes, validates & refactors  (3rd — last pass)
+   ↓
+Toni confirms completion → reports back to Jovi
+```
+
+> **If Toni is unavailable:** Leon steps up as the primary coding executor.
+> **If Leon is also unavailable:** Theo handles full execution from his own `theo_handoff.md`.
 
 ---
 
@@ -32,6 +66,7 @@ This file serves as the communication channel between **Jovi (Planner)** and the
 ### Task #N
 - **Priority**: [high/medium/low]
 - **Objective**: [clear goal statement]
+- **Assigned To**: [Toni / Theo / Leon]
 - **Requirements**:
   - [specific requirement 1]
   - [specific requirement 2]
@@ -45,10 +80,11 @@ This file serves as the communication channel between **Jovi (Planner)** and the
 ## Status Tracking
 
 | Status | Meaning |
-|--------|---------|
+|--------|---------| 
 | `pending` | Task received, not yet started |
-| `in_progress` | Being executed by Leon |
-| `review` | Awaiting Theo's validation |
+| `in_progress` | Being executed by assigned agent |
+| `optimizing` | Theo is refining or validating |
+| `review` | Awaiting Toni's final check |
 | `completed` | Task finished and validated |
 | `blocked` | Needs clarification or resource |
 
@@ -56,11 +92,14 @@ This file serves as the communication channel between **Jovi (Planner)** and the
 
 ## Execution Rules
 
-1. **No task starts until clearly defined** — if unclear, Theo asks Jovi for clarification
-2. **Theo optimizes before assigning** — improve the approach before execution
-3. **Leon executes with autonomy** — but flags edge cases or risks early
-4. **Theo validates before completion** — check correctness and completeness
-5. **Blockers get escalated immediately** — don't wait to surface issues
+1. **Jovi defines, Toni leads** — Toni is the main executor and owns the task pipeline
+2. **No task starts until clearly defined** — if unclear, Toni or Theo asks Jovi for clarification
+3. **Theo optimizes before final delivery** — review all output for quality, correctness, and performance
+4. **Leon executes with autonomy** — but flags edge cases or risks to Toni/Theo immediately
+5. **Leon is the secondary fallback** — if Toni is unavailable, Leon takes over
+6. **Theo is the tertiary fallback** — Theo activates only when both Toni and Leon are unavailable, or for optimization passes
+7. **Theo's tasks are tracked in `theo_handoff.md`** — all optimization tasks go there
+8. **Blockers get escalated immediately** — don't wait to surface issues to Jovi
 
 ---
 
@@ -78,4 +117,8 @@ This file serves as the communication channel between **Jovi (Planner)** and the
 
 ## Completed Tasks
 
-*None yet*
+### ✅ BuildSight v1.8 Beta — Stabilized Bounding Boxes & Florence-2 VLM
+- **Date**: 2026-04-23
+- **Executed By**: Toni (Claude)
+- **Optimized By**: Theo (OpenCode)
+- **Summary**: Replaced Moondream2 with Florence-2-base, fixed VLM inference pipeline, stabilized bounding box rendering in DetectionPanel, hardened fallback logic. Pushed to GitHub as `v1.8-beta`.

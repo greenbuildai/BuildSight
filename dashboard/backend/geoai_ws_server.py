@@ -69,6 +69,9 @@ class GeoAIBroadcaster:
     telemetry payloads to all connected WebSocket clients.
     """
 
+    # If the pipeline goes silent for this many seconds, clear stale workers
+    _PIPELINE_TIMEOUT_S = 30.0
+
     def __init__(self):
         self.engine = IntelligenceEngine()
         self.heatmap_engine = HeatmapEngine()
@@ -78,23 +81,40 @@ class GeoAIBroadcaster:
         self._last_fps = 0
         self._last_latency = 0
         self._last_condition = "S1_normal"
+        self._last_update_time: float = 0.0
         self._running = False
         log.info("GeoAIBroadcaster initialized")
 
-    def update_from_detections(self, detections: list, fps: float = 0, latency_ms: float = 0, scene_condition: str = "S1_normal"):
+    def update_from_detections(
+        self,
+        detections: list,
+        fps: float = 0,
+        latency_ms: float = 0,
+        scene_condition: str = "S1_normal",
+        frame_w: int = 0,
+        frame_h: int = 0,
+    ):
         """
         Called by the FastAPI server or GeoAI pipeline via WS
         when new detection results are available.
-        
+
         Args:
             detections: List of detection dicts from the pipeline
             fps: Current pipeline FPS
             latency_ms: Processing latency
             scene_condition: Current estimated site condition
+            frame_w: Width of the source frame in pixels (0 = keep current)
+            frame_h: Height of the source frame in pixels (0 = keep current)
         """
         self._last_fps = fps
         self._last_latency = latency_ms
         self._last_condition = scene_condition
+        self._last_update_time = time.time()
+
+        # Sync mapper frame dimensions so pixel→world mapping is accurate
+        if frame_w > 0 and frame_h > 0:
+            self.engine.mapper.frame_w = frame_w
+            self.engine.mapper.frame_h = frame_h
         
         worker_profiles = []
         for d in detections:
@@ -117,12 +137,12 @@ class GeoAIBroadcaster:
             wp.vest = None
             worker_profiles.append(wp)
         
+        self._last_workers = self.engine.process_frame(worker_profiles) if worker_profiles else []
         if worker_profiles:
-            self._last_workers = self.engine.process_frame(worker_profiles)
             log.info("GeoAI pipeline connected to WS server")
             log.info("Pushing live detections to dashboard")
-            # Push latest enriched spatial workers into heatmap engine
-            self.heatmap_engine.update(self._last_workers)
+        # Always sync heatmap (clears stale workers when detections go empty)
+        self.heatmap_engine.update(self._last_workers)
     
     def _build_risk_cells(self) -> List[Dict]:
         """Generate risk grid cells from the site configuration."""
@@ -218,7 +238,17 @@ class GeoAIBroadcaster:
     def build_payload(self) -> Dict:
         """Build the full HeatmapUpdatePayload for broadcast."""
         self.cycle += 1
-        
+
+        # Auto-clear stale workers if pipeline has gone silent
+        if (
+            self._last_workers
+            and self._last_update_time > 0
+            and time.time() - self._last_update_time > self._PIPELINE_TIMEOUT_S
+        ):
+            log.info("Pipeline silent for %.0fs — clearing stale workers", self._PIPELINE_TIMEOUT_S)
+            self._last_workers = []
+            self.heatmap_engine.update([])
+
         workers = []
         for sw in self._last_workers:
             workers.append({
@@ -366,7 +396,9 @@ async def ws_handler(websocket: ServerConnection):
                         detections,
                         fps=cmd.get("fps", 0),
                         latency_ms=cmd.get("latency_ms", 0),
-                        scene_condition=cmd.get("scene_condition", "S1_normal")
+                        scene_condition=cmd.get("scene_condition", "S1_normal"),
+                        frame_w=cmd.get("frame_w", 0),
+                        frame_h=cmd.get("frame_h", 0),
                     )
                 
             except json.JSONDecodeError:

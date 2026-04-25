@@ -67,7 +67,9 @@ class GeoAIPipeline:
         self.narration_interval = 17.0 # Seconds (staggered from SAM)
         self.segmentation_interval = 25.0 # Seconds
         self.is_spatial_expert_mode = False
-        
+        self._frame_w = 1920
+        self._frame_h = 1080
+
         # Load Components
         self.mapper = SpatialMapper(
             homography_path=os.path.join(PROJECT_ROOT, f"camera_{self.camera_id.lower().replace('-','')}_H.npy")
@@ -132,10 +134,13 @@ class GeoAIPipeline:
             
             p_det = {
                 "id": f"{cls_name}_{int(time.time()*100)}",
+                "track_id": det.get("track_id", det.get("id", int(time.time()*1000) % 10000)),
                 "camera_id": self.camera_id,
                 "timestamp": timestamp.isoformat(),
                 "class": cls_name,
                 "conf": conf,
+                # Raw pixel box — required by IntelligenceEngine for pixel→world re-projection
+                "box": [x1, y1, x2, y2],
                 "world_x": round(world_x, 3),
                 "world_y": round(world_y, 3),
                 "lat": lat,
@@ -158,10 +163,24 @@ class GeoAIPipeline:
         return processed_detections
 
     def _get_zone_at_point(self, x: float, y: float) -> Dict:
-        """Fallback zone logic if DB query is not used."""
-        # Matches the risk_zones table names
-        if 16.16 <= x <= 18.9: return {"name": "low_risk_parking", "risk": "LOW"}
-        if 0 <= x <= 18.9 and 0 <= y <= 9.75: return {"name": "moderate_risk_interior", "risk": "MODERATE"}
+        """Fallback zone logic — thresholds match zones.geojson GPS polygons.
+        Site is 24.93m (E-W) × 15.75m (N-S), rotation_deg=0 (north-aligned).
+        Camera visible range: wy ≈ 3.0–14.75m (perspective model coverage).
+        """
+        # high_risk_staircase: lon 78.66883-78.66888, lat 10.81665-10.81667
+        if 3.0 <= x <= 8.0 and y >= 10.5:
+            return {"name": "high_risk_staircase", "risk": "HIGH"}
+        # low_risk_parking: lon 78.66898-78.66901, lat 10.81658-10.81667
+        if x >= 19.0 and 3.0 <= y <= 13.0:
+            return {"name": "low_risk_parking", "risk": "LOW"}
+        # moderate_risk_interior: lon 78.66884-78.66898, lat 10.81659-10.81666
+        if 3.5 <= x <= 19.0 and 3.5 <= y <= 12.0:
+            return {"name": "moderate_risk_interior", "risk": "MODERATE"}
+        # high_risk_scaffolding perimeter (the annular ring outside interior)
+        if 1.0 <= x <= 23.9 and 1.0 <= y <= 14.75:
+            return {"name": "high_risk_scaffolding", "risk": "HIGH"}
+        if 0.0 <= x <= 24.93 and 0.0 <= y <= 15.75:
+            return {"name": "high_risk_scaffolding", "risk": "HIGH"}
         return {"name": "outside", "risk": "NONE"}
 
     def _save_to_db(self, detections: List[Dict]):
@@ -196,23 +215,25 @@ class GeoAIPipeline:
     async def _push_to_websocket(self, detections: List[Dict]):
         """Transmit telemetry to GeoAI HUD using persistent connection."""
         if not self.use_ws: return
-        
+
         try:
             if not self.ws_conn:
                 self.ws_conn = await websockets.connect(self.ws_url, max_size=8 * 1024 * 1024)
-            
+
             payload = {
                 "type": "update_detections",
                 "camera_id": self.camera_id,
                 "detections": detections,
                 "fps": detections[0].get("_fps", 0) if detections else 0,
                 "latency_ms": detections[0].get("_latency", 0) if detections else 0,
-                "scene_condition": detections[0].get("_condition", "S1_normal") if detections else "S1_normal"
+                "scene_condition": detections[0].get("_condition", "S1_normal") if detections else "S1_normal",
+                "frame_w": self._frame_w,
+                "frame_h": self._frame_h,
             }
             await self.ws_conn.send(json.dumps(payload))
         except Exception as e:
             logger.warning(f"📡 WebSocket push failed: {e}. Reconnecting...")
-            self.ws_conn = None 
+            self.ws_conn = None
 
     async def _narration_loop(self):
         """Background loop for VLM site narration via Florence-2 (geoai_vlm_util)."""
@@ -320,13 +341,13 @@ class GeoAIPipeline:
             while True:
                 # 1. Read frame
                 ret, frame = cap.read()
-                self.latest_frame = frame # Store for intelligence layer
-                
-                # Looping logic: reset if end of video reached
+                self.latest_frame = frame
+
                 if not ret:
                     cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
                     continue
 
+                self._frame_h, self._frame_w = frame.shape[:2]
                 frame_idx += 1
                 start_time = time.time()
 

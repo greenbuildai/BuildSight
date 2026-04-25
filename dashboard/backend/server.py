@@ -565,6 +565,23 @@ def _build_site_prompt(req: "ChatRequest") -> str:
     condition = ctx.get("condition", "Unknown")
     alerts    = ctx.get("alerts", [])
     telemetry = ctx.get("telemetry", {})
+
+    # Pull latest Florence-2 VLM scene description (non-blocking cache read)
+    vlm_section = ""
+    try:
+        from geoai_vlm_util import get_cached_entry
+        vlm_entry, vlm_stale = get_cached_entry()
+        if vlm_entry and not vlm_stale:
+            vlm_desc = vlm_entry.get("description", "").strip()
+            vlm_src  = vlm_entry.get("source", "unknown")
+            if vlm_desc:
+                vlm_section = (
+                    f"\nVLM SCENE ANALYSIS (Florence-2 / source={vlm_src})\n"
+                    f"{vlm_desc}\n"
+                )
+    except Exception:
+        pass
+
     return (
         f"LIVE SITE CONTEXT\n"
         f"- Active workers: {workers}\n"
@@ -573,7 +590,8 @@ def _build_site_prompt(req: "ChatRequest") -> str:
         f"- Site condition: {condition}\n"
         f"- Active escalations: {len(alerts)}\n"
         f"- Escalation details: {json.dumps(alerts, ensure_ascii=True)}\n"
-        f"- Telemetry: {json.dumps(telemetry, ensure_ascii=True)}\n\n"
+        f"- Telemetry: {json.dumps(telemetry, ensure_ascii=True)}\n"
+        f"{vlm_section}\n"
         f"USER REQUEST\n{req.message}"
     ).strip()
 
@@ -642,9 +660,13 @@ async def startup_health_check():
         
     # 2. GeoAI Utility Check
     try:
-        from geoai_vlm_util import is_available as vlm_ready
+        from geoai_vlm_util import is_available as vlm_ready, get_model_info as vlm_info
         from geoai_sam_util import is_available as sam_ready
-        logger.info(f"[-] GeoAI VLM: {'READY' if vlm_ready() else 'OFFLINE'}")
+        info = vlm_info()
+        # VLM is lazy-loaded; "LOADING" is normal at startup — not a failure.
+        vlm_status = "READY" if vlm_ready() else "LOADING (background preload started)"
+        logger.info(f"[-] GeoAI VLM: {vlm_status}")
+        logger.info(f"    Candidates: {info['candidates']}")
         logger.info(f"[-] GeoAI SAM: {'READY' if sam_ready() else 'OFFLINE'}")
     except ImportError:
         logger.info("[-] GeoAI Utils: OFFLINE (Import Error)")
@@ -671,6 +693,14 @@ async def startup_bg_service():
     """Initialise background detection service and capture asyncio event loop."""
     global bg_service
     ws_manager.capture_loop(asyncio.get_event_loop())
+
+    # Kick off Florence-2 loading in a background thread so it's ready before
+    # the first /vlm/latest request without blocking startup.
+    try:
+        from geoai_vlm_util import trigger_preload
+        trigger_preload()
+    except Exception as _vlm_err:
+        logger.warning("[VLM] Could not start preload: %s", _vlm_err)
 
     from background_detection_service import BackgroundDetectionService
 

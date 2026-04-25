@@ -15,19 +15,37 @@ log = logging.getLogger("BuildSight.SpatialData")
 SITE_CONFIG = {
     "site_id": "CH-SITE-01-TIRUCHIRAPPALLI",
     "anchors": {
-        "SW_STAIRCASE": [10.816539, 78.668835], # User defined origin
+        "SW_STAIRCASE": [10.816539, 78.668835],
         "SE_KITCHEN":   [10.816714, 78.66842],
         "NE_HALL":      [10.816715, 78.668946],
         "NW_TOILET":    [10.816527, 78.668945],
     },
-    "sw_lat": 10.816539,
-    "sw_lon": 78.668835,
-    "width_m": 18.90,  # X-axis (Local)
-    "depth_m": 9.75,   # Y-axis (Local)
-    "rotation_deg": -113.0, # Adjusted for new origin
-    "centre": [10.81662, 78.66891],
+    # SW corner derived from site_boundary zone template — matches GeoJSON polygons
+    "sw_lat": 10.81655620,
+    "sw_lon": 78.66880589,
+    # Actual site extent measured from zone boundary GPS coordinates:
+    #   lon span (78.66903362 - 78.66880589) * 109 450 m/° ≈ 24.93 m (E-W)
+    #   lat span (10.81669864 - 10.81655620) * 110 574 m/° ≈ 15.75 m (N-S)
+    "width_m": 24.93,   # X-axis = East
+    "depth_m": 15.75,   # Y-axis = North
+    # rotation_deg=0 means image X maps to East and image Y maps to North.
+    # The overhead camera view is roughly north-aligned; previous -113° value
+    # was producing coordinates ≈10 m south of the site boundary.
+    "rotation_deg": 0,
+    "centre": [10.81662742, 78.66891976],
     "utm_zone": 44,
     "utm_band": "N",
+    # ── CAM-01 perspective model (from camera_CAM01_position in zones.geojson) ──
+    # Camera mounted in neighbour building south of site, looking North at 7.62m
+    "cam_wx":      12.46,   # m east of SW corner (78.66891976 is midpoint lon)
+    "cam_wy":      -5.00,   # m south of SW corner (camera is outside site)
+    "cam_h":        7.62,   # camera height above ground (m)
+    "cam_fov_h":   60.0,    # horizontal FoV in degrees (from GeoJSON)
+    # Ground coverage from camera_fov_CAM01 polygon:
+    #   near (bottom of frame): lat 10.81658333 → wy ≈ 3.0m
+    #   far  (top  of frame):   lat 10.81668959 → wy ≈ 14.75m
+    "cam_wy_near":  3.0,    # wy at bottom frame edge (m)
+    "cam_wy_far":  14.75,   # wy at top frame edge (m)
 }
 
 class SpatialMapper:
@@ -86,13 +104,62 @@ class SpatialMapper:
             world = cv2.perspectiveTransform(pt, self.H)
             wx, wy = float(world[0][0][0]), float(world[0][0][1])
         else:
-            # Linear mapping fallback
-            wx = (px / self.frame_w) * self.site["width_m"]
-            wy = (1.0 - py / self.frame_h) * self.site["depth_m"]
+            wx, wy = self._perspective_pixel_to_world(px, py)
 
         # Clamp strictly to site boundary — no margin outside
         wx = max(0.0, min(self.site["width_m"], wx))
         wy = max(0.0, min(self.site["depth_m"], wy))
+        return wx, wy
+
+    def _perspective_pixel_to_world(self, px: float, py: float) -> Tuple[float, float]:
+        """
+        Perspective-accurate pixel→world mapping for CAM-01.
+
+        Model: pinhole camera pitched downward, looking North.
+        Parameters derived from camera_CAM01_position (zones.geojson):
+          • Camera at (cam_wx, cam_wy, cam_h) in site-local metres
+          • Horizontal FoV = cam_fov_h degrees
+          • Vertical coverage: bottom frame = cam_wy_near, top frame = cam_wy_far
+
+        Derivation: ground-plane ray-cast from camera centre through each pixel.
+          d_world = R_pitch(θ) · [u, 1, -v]  (camera looking +Y/North)
+          t = cam_h / (sin θ + v·cos θ)
+          wx = cam_wx + t·u
+          wy = cam_wy + t·(cos θ − v·sin θ)
+        """
+        cam_wx   = self.site.get("cam_wx",      12.46)
+        cam_wy   = self.site.get("cam_wy",       -5.00)
+        cam_h    = self.site.get("cam_h",          7.62)
+        fov_h    = self.site.get("cam_fov_h",     60.0)
+        wy_near  = self.site.get("cam_wy_near",    3.0)
+        wy_far   = self.site.get("cam_wy_far",    14.75)
+
+        dy_near = wy_near - cam_wy          # ground depth to bottom-frame edge
+        dy_far  = wy_far  - cam_wy          # ground depth to top-frame edge
+
+        angle_near = math.atan(cam_h / dy_near)    # steep downward angle (near)
+        angle_far  = math.atan(cam_h / dy_far)     # shallow downward angle (far)
+
+        pitch_rad    = (angle_near + angle_far) / 2.0
+        fov_v_half   = (angle_near - angle_far) / 2.0
+
+        f_x = (self.frame_w / 2.0) / math.tan(math.radians(fov_h / 2.0))
+        f_y = (self.frame_h / 2.0) / math.tan(fov_v_half)
+
+        u = (px - self.frame_w / 2.0) / f_x
+        v = (py - self.frame_h / 2.0) / f_y
+
+        sin_p = math.sin(pitch_rad)
+        cos_p = math.cos(pitch_rad)
+
+        denom = sin_p + v * cos_p
+        if denom <= 1e-6:
+            # Ray is at or above horizon — place at far boundary
+            return cam_wx, self.site["depth_m"]
+
+        t  = cam_h / denom
+        wx = cam_wx + t * u
+        wy = cam_wy + t * (cos_p - v * sin_p)
         return wx, wy
 
     def world_to_gps(self, wx: float, wy: float) -> Tuple[float, float]:

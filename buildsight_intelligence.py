@@ -697,6 +697,13 @@ class IntelligenceEngine:
         now = time.time()
         spatial_workers = []
 
+        # Evict tracks not seen for more than 30s so stale dwell timers don't
+        # bleed into the next detection of the same track_id.
+        _TRACK_EVICT_AGE_S = 30.0
+        stale = [wid for wid, t in self.tracks.items() if now - t.last_seen > _TRACK_EVICT_AGE_S]
+        for wid in stale:
+            del self.tracks[wid]
+
         for wp in worker_profiles:
             wid = wp.worker_id
             # Extract pixel center of the worker bounding box
@@ -912,21 +919,26 @@ class IntelligenceEngine:
     # ── Private helpers ────────────────────────────────────────────────────
 
     def _resolve_zone(self, wx: float, wy: float) -> str:
-        """Resolve which zone a world position falls in."""
-        bw = SITE_CONFIG["width_m"]
-        bd = SITE_CONFIG["depth_m"]
+        """Resolve which zone a world position falls in.
 
-        # Simplified zone resolution based on position quadrants
-        if wx < 3 and wy > bd - 3:
+        Thresholds are in site-local metres with rotation_deg=0 (north-up).
+        Derived from GPS zone template polygons in geoai/router.py:
+          high_risk_staircase  : lon 78.66883-78.66888, lat 10.81665-10.81667
+          low_risk_parking     : lon 78.66898-78.66901, lat 10.81658-10.81667
+          moderate_risk_interior: lon 78.66884-78.66898, lat 10.81659-10.81666
+        """
+        # high_risk_staircase — NW quadrant of site
+        if 3.0 <= wx <= 8.0 and wy >= 10.5:
             return "high_risk_staircase"
-        elif wx > bw - 4 and wy < 3:
+        # low_risk_parking — NE strip
+        elif wx >= 19.0 and 2.5 <= wy <= 13.0:
             return "low_risk_parking"
-        elif wx < 5 and wy < 3:
-            return "moderate_risk_kitchen"
-        elif wy > bd - 2:
-            return "high_risk_scaffolding"
-        elif wx > bw / 2:
+        # moderate_risk_interior — broad central zone
+        elif 3.5 <= wx <= 19.0 and 3.5 <= wy <= 12.0:
             return "moderate_risk_interior"
+        # high_risk_scaffolding — remaining interior (edges / upper area)
+        elif 0.5 <= wx <= SITE_CONFIG["width_m"] - 0.5 and 0.5 <= wy <= SITE_CONFIG["depth_m"] - 0.5:
+            return "high_risk_scaffolding"
         else:
             return "low_risk_common"
 

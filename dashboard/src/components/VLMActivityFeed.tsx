@@ -124,12 +124,12 @@ export function VLMActivityFeed() {
         <div className="vlm-feed__title">
           <span className="vlm-feed__title-text">VLM ACTIVITY FEED</span>
           <span className={`vlm-feed__badge ${vlmAvailable === true ? 'vlm-feed__badge--live' : vlmAvailable === false ? 'vlm-feed__badge--fallback' : 'vlm-feed__badge--loading'}`}>
-            {vlmAvailable === true ? 'MOONDREAM2' : vlmAvailable === false ? 'FALLBACK' : 'LOADING'}
+            {vlmAvailable === true ? 'FLORENCE-2' : vlmAvailable === false ? 'FALLBACK' : 'LOADING'}
           </span>
         </div>
         <span className="vlm-feed__subtitle">
           {vlmAvailable === false
-            ? 'Rule-based descriptions — install transformers + torch to enable VLM'
+            ? 'Rule-based descriptions — Florence-2 unavailable (check transformers/torch install)'
             : 'AI-generated site narration · updates every 10s'}
         </span>
       </div>
