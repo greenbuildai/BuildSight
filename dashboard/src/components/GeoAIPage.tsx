@@ -432,6 +432,15 @@ export function GeoAIPage() {
               </div>
             </div>
 
+            {/* ── SAM Zone Intelligence — promoted to top for easy access ── */}
+            <div className="geoai-command-card" style={{ padding: '1rem', borderBottom: '1px solid var(--color-border)', background: 'rgba(10,12,16,0.8)' }}>
+              <DynamicZoneEditor
+                onZonesChange={setDynamicZones}
+                isFormOpen={isZoneFormOpen}
+                onFormToggle={setIsZoneFormOpen}
+              />
+            </div>
+
             <GeoAIHUD
               data={data}
               connectionState={resolvedConnectionState}
@@ -441,50 +450,6 @@ export function GeoAIPage() {
               onResolve={resolveEvent}
               statusData={statusData}
             />
-
-            {/* ── VLM Scene Narration ── */}
-            <div className="geoai-command-card" style={{ padding: '1rem', borderBottom: '1px solid var(--color-border)', background: 'rgba(10,12,16,0.6)' }}>
-              <p className="geoai-command-card__eyebrow" style={{ marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <span>AI Scene Analysis</span>
-                {vlmEntry && (
-                  <span
-                    style={{
-                      fontSize: '10px',
-                      padding: '2px 6px',
-                      borderRadius: 4,
-                      background: isOpticalVlmSource(vlmEntry.source) ? 'rgba(0,200,100,0.15)' : 'rgba(255,200,0,0.15)',
-                      color: isOpticalVlmSource(vlmEntry.source) ? '#00c864' : '#ffd600',
-                    }}
-                  >
-                    {isOpticalVlmSource(vlmEntry.source) ? 'VLM' : 'Rule-based'}
-                  </span>
-                )}
-                {vlmLoading && <span style={{ fontSize: '10px', color: 'var(--color-muted)' }}>updating…</span>}
-              </p>
-              <p style={{ fontSize: '12px', lineHeight: 1.5, color: 'var(--color-text)', margin: '0 0 0.7rem', minHeight: '3em' }}>
-                {vlmEntry ? vlmEntry.description : 'Awaiting scene frame…'}
-              </p>
-              <form
-                onSubmit={e => { e.preventDefault(); if (vlmQuestion.trim()) { fetchVlm(vlmQuestion); setVlmQuestion('') } }}
-                style={{ display: 'flex', gap: '0.4rem' }}
-              >
-                <input
-                  value={vlmQuestion}
-                  onChange={e => setVlmQuestion(e.target.value)}
-                  placeholder="Ask about this scene…"
-                  style={{ flex: 1, fontSize: '11px', padding: '4px 8px', borderRadius: 4, border: '1px solid var(--color-border)', background: 'var(--color-surface)', color: 'var(--color-text)' }}
-                />
-                <button type="submit" disabled={vlmLoading || !vlmQuestion.trim()} style={{ fontSize: '11px', padding: '4px 10px', borderRadius: 4, background: 'var(--color-primary)', color: '#fff', border: 'none', cursor: 'pointer', opacity: vlmLoading || !vlmQuestion.trim() ? 0.5 : 1 }}>Ask</button>
-              </form>
-            </div>
-
-            <div className="geoai-command-card" style={{ padding: '1rem', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-              <DynamicZoneEditor
-                onZonesChange={setDynamicZones}
-                isFormOpen={isZoneFormOpen}
-                onFormToggle={setIsZoneFormOpen}
-              />
-            </div>
           </div>
         </div>
       </motion.div>

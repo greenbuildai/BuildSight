@@ -17,6 +17,8 @@ before the first user request.
 
 # ── CRITICAL: Mock flash_attn BEFORE any transformers imports ─────────────────
 # Florence-2 has a soft dependency on flash_attn which doesn't build on Windows.
+# Newer transformers also checks PACKAGE_DISTRIBUTION_MAPPING["flash_attn"] at
+# import time — patch that dict too so the KeyError doesn't block loading.
 import sys
 import types
 from unittest.mock import MagicMock
@@ -25,6 +27,15 @@ if "flash_attn" not in sys.modules:
     _fa = types.ModuleType("flash_attn")
     _fa.__spec__ = MagicMock()
     sys.modules["flash_attn"] = _fa
+
+# Patch transformers' internal package-distribution map so is_flash_attn_*_available()
+# doesn't raise a KeyError when flash_attn is absent on Windows.
+try:
+    import transformers.utils.import_utils as _triu
+    if hasattr(_triu, "PACKAGE_DISTRIBUTION_MAPPING"):
+        _triu.PACKAGE_DISTRIBUTION_MAPPING.setdefault("flash_attn", ["flash-attn"])
+except Exception:
+    pass
 
 # ── Standard imports ──────────────────────────────────────────────────────────
 import asyncio
@@ -46,6 +57,11 @@ VLM_MODEL_IDS = [
 ]
 VLM_CACHE_TTL_S      = 10.0   # seconds between cached re-descriptions
 VLM_RETRY_INTERVAL_S = 300.0  # wait this long before retrying after a failed load
+
+# Florence-2 caption task — VQA outputs garbage on this model (returns "yes",
+# "0.17", "QA"). MORE_DETAILED_CAPTION generates rich natural-language scene
+# descriptions that Turner AI uses as visual grounding context.
+VLM_CAPTION_TASK = "<MORE_DETAILED_CAPTION>"
 
 DEFAULT_QUESTION = (
     "Describe the construction site activity. "
@@ -94,27 +110,48 @@ def _try_load_vlm() -> bool:
         if _VLM_AVAILABLE is False and time.time() < _VLM_RETRY_AFTER:
             return False
 
-        from transformers import AutoModelForCausalLM, AutoProcessor
+        # Determine device explicitly — avoids requiring `accelerate` for device_map="auto"
+        _target_device = "cuda" if torch.cuda.is_available() else "cpu"
+        _load_dtype    = torch.float16 if _target_device == "cuda" else torch.float32
 
         for model_id in VLM_MODEL_IDS:
-            log.info("VLM: Attempting to load %s ...", model_id)
+            log.info("VLM: Attempting to load %s on %s ...", model_id, _target_device)
             try:
-                processor = AutoProcessor.from_pretrained(
-                    model_id,
-                    trust_remote_code=True,
-                )
-                model = AutoModelForCausalLM.from_pretrained(
-                    model_id,
-                    torch_dtype=torch.float16,
-                    device_map="auto",
-                    trust_remote_code=True,
-                )
+                # Newer transformers has Florence-2 natively — use dedicated classes.
+                # AutoModelForCausalLM rejects Florence2Config in recent versions.
+                try:
+                    from transformers import Florence2ForConditionalGeneration, Florence2Processor
+                    processor = Florence2Processor.from_pretrained(
+                        model_id, trust_remote_code=True,
+                    )
+                    model = Florence2ForConditionalGeneration.from_pretrained(
+                        model_id,
+                        torch_dtype=_load_dtype,
+                        trust_remote_code=True,
+                    )
+                except (ImportError, AttributeError):
+                    # Older transformers — fall back to Auto classes
+                    from transformers import AutoModelForCausalLM, AutoProcessor
+                    processor = AutoProcessor.from_pretrained(
+                        model_id, trust_remote_code=True,
+                    )
+                    model = AutoModelForCausalLM.from_pretrained(
+                        model_id,
+                        torch_dtype=_load_dtype,
+                        trust_remote_code=True,
+                    )
+
+                # Patch missing forced_bos_token_id on older Florence-2 model configs
+                for cfg_attr in ("text_config", "language_config"):
+                    lang_cfg = getattr(model.config, cfg_attr, None)
+                    if lang_cfg is not None and not hasattr(lang_cfg, "forced_bos_token_id"):
+                        lang_cfg.forced_bos_token_id = None
+
+                model = model.to(_target_device)
                 model.eval()
 
-                # Detect actual device the model landed on
-                actual_device = next(model.parameters()).device
-                device_str    = str(actual_device)
-                dtype         = torch.float16 if "cuda" in device_str else torch.float32
+                device_str = str(_target_device)
+                dtype      = _load_dtype
 
                 if "cuda" in device_str:
                     free, total = torch.cuda.mem_get_info()
@@ -212,7 +249,11 @@ def describe_frame_sync(
                 if "focus" not in question.lower():
                     question = f"What is at the center of this focused view? {question}"
 
-            prompt = f"<VQA>{question}"
+            # Use MORE_DETAILED_CAPTION — VQA task returns garbage ("yes", "0.17",
+            # "QA") on Florence-2-base-ft. Caption produces rich natural-language
+            # scene descriptions that Turner uses as visual grounding context.
+            task   = VLM_CAPTION_TASK
+            prompt = task
             inputs = _VLM_PROCESSOR(text=prompt, images=img, return_tensors="pt")
 
             # Move all tensors to model device with correct dtype
@@ -225,7 +266,7 @@ def describe_frame_sync(
                 generated_ids = _VLM_MODEL.generate(
                     input_ids=inputs["input_ids"],
                     pixel_values=inputs["pixel_values"],
-                    max_new_tokens=96,
+                    max_new_tokens=128,
                     num_beams=3,
                     do_sample=False,
                     early_stopping=True,
@@ -233,23 +274,14 @@ def describe_frame_sync(
 
             generated_text = _VLM_PROCESSOR.batch_decode(generated_ids, skip_special_tokens=False)[0]
             parsed         = _VLM_PROCESSOR.post_process_generation(
-                generated_text, task="<VQA>", image_size=(img.width, img.height)
+                generated_text, task=task, image_size=(img.width, img.height)
             )
 
-            raw      = parsed.get("<VQA>", "")
-            description = raw.replace("QA>", "").replace("<VQA>", "").strip()
+            description = str(parsed.get(task, "")).strip()
 
-            # Reject obvious echo / empty responses
-            desc_clean = description.lower().strip()
-            q_clean    = question.lower().strip()
-            is_echo = (
-                not description
-                or len(description.strip()) < 8
-                or desc_clean == q_clean
-                or (desc_clean in q_clean and len(desc_clean) > 8)
-            )
-            if is_echo:
-                description = "Site activity observed. Processing vision telemetry..."
+            # Reject empty or trivially short outputs
+            if not description or len(description) < 10:
+                description = ""
 
             source = "florence2"
 

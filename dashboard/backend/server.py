@@ -35,7 +35,7 @@ from pydantic import BaseModel
 import requests as _requests
 import asyncio
 from typing import Set
-from fastapi import FastAPI, File, Form, Request, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, File, Form, HTTPException, Request, Response, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
@@ -100,18 +100,18 @@ def _env_int(name: str, default: int) -> int:
     return int(value) if value else default
 
 
-MODEL_DIR = _env_path("BUILDSIGHT_MODEL_DIR", ROOT / "weights")
+MODEL_DIR = _env_path("BUILDSIGHT_MODEL_DIR", ROOT / "research" / "weights")
 SASTRA_V11 = _env_path("BUILDSIGHT_MODEL_V11", MODEL_DIR / "yolov11_buildsight_best.pt")
 SASTRA_V26 = _env_path("BUILDSIGHT_MODEL_V26", MODEL_DIR / "yolov26_buildsight_best.pt")
 
 LOCAL_BEST = _env_path(
     "BUILDSIGHT_LOCAL_MODEL",
-    ROOT / "buildsight-base" / "basic yolo model" /
+    ROOT / "research" / "buildsight-base" / "basic yolo model" /
     "output" / "kaggle_working_all_outputs" /
     "kaggle" / "working" / "runs" / "train" / "weights" / "best.pt",
 )
 
-RUNTIME_DIR = _env_path("BUILDSIGHT_RUNTIME_DIR", ROOT / "runtime")
+RUNTIME_DIR = _env_path("BUILDSIGHT_RUNTIME_DIR", ROOT / "data" / "runtime")
 TMP_DIR = RUNTIME_DIR / "tmp"
 VIDEO_OUTPUT_DIR = RUNTIME_DIR / "video_outputs"
 
@@ -566,7 +566,9 @@ def _build_site_prompt(req: "ChatRequest") -> str:
     alerts    = ctx.get("alerts", [])
     telemetry = ctx.get("telemetry", {})
 
-    # Pull latest Florence-2 VLM scene description (non-blocking cache read)
+    # Pull latest Florence-2 visual grounding caption (non-blocking cache read).
+    # The caption is a MORE_DETAILED_CAPTION from the live CCTV frame — Turner
+    # should treat it as ground-truth visual evidence when answering the user.
     vlm_section = ""
     try:
         from geoai_vlm_util import get_cached_entry
@@ -574,10 +576,12 @@ def _build_site_prompt(req: "ChatRequest") -> str:
         if vlm_entry and not vlm_stale:
             vlm_desc = vlm_entry.get("description", "").strip()
             vlm_src  = vlm_entry.get("source", "unknown")
-            if vlm_desc:
+            if vlm_desc and vlm_src == "florence2":
                 vlm_section = (
-                    f"\nVLM SCENE ANALYSIS (Florence-2 / source={vlm_src})\n"
+                    f"\nVISUAL GROUNDING (Florence-2 live frame caption)\n"
                     f"{vlm_desc}\n"
+                    f"Use this visual evidence when answering questions about what is "
+                    f"currently visible on site.\n"
                 )
     except Exception:
         pass
@@ -2724,6 +2728,17 @@ async def ai_chat(req: ChatRequest):
             "request_id": request_id,
         }, status_code=503)
 
+    # Refresh Florence-2 visual grounding before building the prompt.
+    # Uses cached result if <10s old (no extra latency). If stale or missing,
+    # runs a fresh caption on the latest CCTV frame (~1.5s on GPU).
+    # Falls through silently if VLM is not loaded or no frame is available.
+    try:
+        from geoai_vlm_util import describe_frame_async, is_available as vlm_ready
+        if vlm_ready() and latest_frame_jpeg:
+            await describe_frame_async(jpeg_bytes=latest_frame_jpeg, force_refresh=False)
+    except Exception:
+        pass
+
     full_prompt = _build_site_prompt(req)
     ctx = req.context
     log_turner_event(
@@ -2823,6 +2838,14 @@ async def ai_chat_stream(req: ChatRequest):
             "error": "STREAMING_UNAVAILABLE",
             "request_id": request_id,
         }, status_code=503)
+
+    # Refresh Florence-2 visual grounding (same logic as non-streaming endpoint)
+    try:
+        from geoai_vlm_util import describe_frame_async, is_available as vlm_ready
+        if vlm_ready() and latest_frame_jpeg:
+            await describe_frame_async(jpeg_bytes=latest_frame_jpeg, force_refresh=False)
+    except Exception:
+        pass
 
     full_prompt = _build_site_prompt(req)
     messages    = _build_mistral_messages(req, full_prompt)
@@ -3164,6 +3187,168 @@ async def get_detection_history(limit: int = 100):
     rows = cursor.fetchall()
     conn.close()
     return {"history": [dict(r) for r in rows]}
+
+
+# ── Turner AI Voice (ElevenLabs Daniel) ──────────────────────────────────────
+
+ELEVENLABS_API_KEY  = os.environ.get("ELEVENLABS_API_KEY", "")
+ELEVENLABS_VOICE_ID = os.environ.get("ELEVENLABS_VOICE_ID", "onwK4e9ZLuTAKqWW03F9")  # Daniel
+ELEVENLABS_MODEL    = os.environ.get("ELEVENLABS_MODEL", "eleven_multilingual_v2")
+ELEVENLABS_ENDPOINT = f"https://api.elevenlabs.io/v1/text-to-speech/{ELEVENLABS_VOICE_ID}"
+
+
+async def _elevenlabs_tts(text: str) -> bytes:
+    """Call ElevenLabs and return raw MP3 bytes."""
+    import httpx
+    async with httpx.AsyncClient(timeout=30) as client:
+        resp = await client.post(
+            ELEVENLABS_ENDPOINT,
+            headers={
+                "xi-api-key":   ELEVENLABS_API_KEY,
+                "Content-Type": "application/json",
+                "Accept":       "audio/mpeg",
+            },
+            json={
+                "text":       text,
+                "model_id":   ELEVENLABS_MODEL,
+                "voice_settings": {
+                    "stability":        0.55,
+                    "similarity_boost": 0.80,
+                    "style":            0.10,
+                    "use_speaker_boost": True,
+                },
+            },
+        )
+        resp.raise_for_status()
+        return resp.content
+
+
+def _time_greeting() -> str:
+    from datetime import datetime
+    hour = datetime.now().hour
+    if hour < 12:
+        return "Good morning"
+    if hour < 17:
+        return "Good afternoon"
+    return "Good evening"
+
+
+@app.post("/api/ai/tts")
+async def turner_tts(req: ChatRequest):
+    """
+    Convert Turner's text response to Daniel's voice via ElevenLabs.
+    Accepts the same ChatRequest shape; returns MP3 audio.
+    """
+    if not ELEVENLABS_API_KEY:
+        raise HTTPException(status_code=503, detail="ELEVENLABS_API_KEY not configured.")
+
+    text = req.message.strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="No text provided.")
+
+    try:
+        audio = await _elevenlabs_tts(text)
+        return Response(content=audio, media_type="audio/mpeg")
+    except Exception as e:
+        logger.error("ElevenLabs TTS error: %s", e)
+        raise HTTPException(status_code=502, detail=f"TTS failed: {e}")
+
+
+@app.get("/api/ai/introduce")
+async def turner_introduce():
+    """
+    Turner's panel presentation introduction — time-aware greeting,
+    self-description, and invitation for questions. Returns MP3 audio
+    + the script text so the frontend can display it simultaneously.
+    """
+    if not ELEVENLABS_API_KEY:
+        raise HTTPException(status_code=503, detail="ELEVENLABS_API_KEY not configured.")
+
+    greeting = _time_greeting()
+    script = (
+        f"{greeting}, panel members. "
+        f"I am Turner — the Chief Artificial Intelligence Supervisor of BuildSight. "
+        f"It is my honour to present myself to you today. "
+        f"I am an AI system purpose-built for real-time construction site safety monitoring. "
+        f"Here is how I work. "
+        f"On site, a CCTV camera continuously streams live footage. "
+        f"My detection pipeline — powered by an ensemble of YOLOv11 and YOLOv26 models "
+        f"trained on Indian construction site data — identifies every worker in each frame "
+        f"within milliseconds. "
+        f"I check for helmet and safety vest compliance on every detected person, "
+        f"and I map their real-world positions onto a live geospatial map using the GeoAI engine. "
+        f"My visual intelligence module, Florence-2, reads the live camera frame and describes "
+        f"what it sees — giving me eyes on the ground at all times. "
+        f"If a worker enters a restricted zone, removes PPE, or dwells too long in a high-risk area, "
+        f"I raise an escalation alert instantly — no human monitoring required. "
+        f"I also serve as your AI supervisor. You may ask me anything about the site — "
+        f"current conditions, compliance status, safety risks, or what the workers are doing — "
+        f"and I will give you a direct, evidence-based answer grounded in live visual data. "
+        f"I am ready. Please go ahead and ask me anything."
+    )
+
+    try:
+        audio = await _elevenlabs_tts(script)
+        # Return audio as base64 + script in JSON so frontend gets both
+        import base64
+        audio_b64 = base64.b64encode(audio).decode()
+        return {"script": script, "audio_b64": audio_b64, "voice": "Daniel", "greeting": greeting}
+    except Exception as e:
+        logger.error("Turner introduce TTS error: %s", e)
+        raise HTTPException(status_code=502, detail=f"TTS failed: {e}")
+
+
+@app.post("/api/ai/speak")
+async def turner_speak(req: ChatRequest):
+    """
+    Full Turner pipeline: generate text response via Mistral/Gemini then
+    speak it with Daniel's voice. Returns JSON with text + audio_b64.
+    Used for panel Q&A voice mode.
+    """
+    if not ELEVENLABS_API_KEY:
+        raise HTTPException(status_code=503, detail="ELEVENLABS_API_KEY not configured.")
+
+    # Refresh visual grounding
+    try:
+        from geoai_vlm_util import describe_frame_async, is_available as vlm_ready
+        if vlm_ready() and latest_frame_jpeg:
+            await describe_frame_async(jpeg_bytes=latest_frame_jpeg, force_refresh=False)
+    except Exception:
+        pass
+
+    full_prompt = _build_site_prompt(req)
+
+    response_text = ""
+    if mistral_enabled:
+        try:
+            messages      = _build_mistral_messages(req, full_prompt)
+            response_text = await run_in_threadpool(_call_mistral_sync, messages)
+        except Exception:
+            pass
+
+    if not response_text and ai_model:
+        try:
+            gemini_history = [
+                {"role": "user" if m.role == "user" else "model", "parts": [m.content]}
+                for m in req.history
+            ]
+            chat     = ai_model.start_chat(history=gemini_history)
+            response = await run_in_threadpool(chat.send_message, full_prompt)
+            response_text = _extract_response_text(response)
+        except Exception:
+            pass
+
+    if not response_text:
+        response_text = "I am currently unable to process that request. Please try again."
+
+    try:
+        import base64
+        audio     = await _elevenlabs_tts(response_text)
+        audio_b64 = base64.b64encode(audio).decode()
+        return {"response": response_text, "audio_b64": audio_b64, "voice": "Daniel"}
+    except Exception as e:
+        logger.error("Turner speak TTS error: %s", e)
+        return {"response": response_text, "audio_b64": None, "error": str(e)}
 
 
 if __name__ == "__main__":

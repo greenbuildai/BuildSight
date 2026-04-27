@@ -6921,3 +6921,101 @@ h1, h2, h3, h4, .display-font {
 .app-shell--god-mode {
   grid-template-columns: 1fr !important;
 }
+
+/* ── Turner Voice Controls ─────────────────────────────────── */
+.turner-voice-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.turner-voice-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  border: 1px solid transparent;
+  border-radius: 0.4rem;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background 160ms ease, border-color 160ms ease, box-shadow 160ms ease, color 160ms ease;
+  white-space: nowrap;
+}
+
+.turner-voice-btn--present {
+  padding: 0.38rem 0.75rem;
+  background: hsla(270, 60%, 22%, 0.85);
+  border-color: hsla(270, 60%, 70%, 0.22);
+  color: hsla(270, 80%, 85%, 0.9);
+}
+
+.turner-voice-btn--present:hover:not(:disabled),
+.turner-voice-btn--present:focus-visible {
+  background: hsla(270, 60%, 28%, 0.9);
+  border-color: hsla(270, 60%, 70%, 0.45);
+  box-shadow: 0 0 12px hsla(270, 80%, 60%, 0.18);
+}
+
+.turner-voice-btn--present:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.turner-voice-btn--present.turner-voice-btn--active {
+  background: hsla(270, 60%, 32%, 0.9);
+  border-color: hsla(270, 70%, 75%, 0.5);
+}
+
+.turner-voice-btn--toggle {
+  padding: 0.38rem 0.6rem;
+  background: hsla(210, 20%, 14%, 0.8);
+  border-color: hsla(190, 30%, 70%, 0.12);
+  color: hsla(190, 30%, 65%, 0.7);
+}
+
+.turner-voice-btn--toggle:hover,
+.turner-voice-btn--toggle:focus-visible {
+  border-color: hsla(190, 50%, 70%, 0.3);
+  color: hsla(190, 60%, 80%, 0.9);
+}
+
+.turner-voice-btn--toggle.turner-voice-btn--on {
+  background: hsla(150, 50%, 14%, 0.85);
+  border-color: hsla(150, 60%, 55%, 0.35);
+  color: hsla(150, 70%, 70%, 0.95);
+}
+
+.turner-voice-btn--toggle svg {
+  flex-shrink: 0;
+}
+
+/* Speaking waveform indicator */
+.turner-speaking-indicator {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 16px;
+  padding: 0 2px;
+}
+
+.turner-speaking-indicator span {
+  display: block;
+  width: 3px;
+  border-radius: 2px;
+  background: hsla(150, 70%, 60%, 0.9);
+  animation: turner-wave 0.8s ease-in-out infinite;
+}
+
+.turner-speaking-indicator span:nth-child(1) { height: 6px;  animation-delay: 0s;    }
+.turner-speaking-indicator span:nth-child(2) { height: 14px; animation-delay: 0.15s; }
+.turner-speaking-indicator span:nth-child(3) { height: 10px; animation-delay: 0.3s;  }
+.turner-speaking-indicator span:nth-child(4) { height: 6px;  animation-delay: 0.45s; }
+
+@keyframes turner-wave {
+  0%, 100% { transform: scaleY(0.4); opacity: 0.6; }
+  50%       { transform: scaleY(1);   opacity: 1;   }
+}
+

@@ -51,8 +51,8 @@ SERVICES = {
         "port": None,  # Processing service, no port
         "cmd": [
             sys.executable, 
-            str(PROJECT_ROOT / "geoai_pipeline.py"),
-            "--source", r"E:\Company\Green Build AI\Prototypes\BuildSight\buildsight-base\gis\inputs\rd4.mp4",
+            str(PROJECT_ROOT / "research" / "experiments" / "geoai_pipeline.py"),
+            "--source", r"E:\Company\Green Build AI\Prototypes\BuildSight\research\buildsight-base\gis\inputs\rd4.mp4",
             "--db",
             "--ws",
             "--model-mode", "ensemble"

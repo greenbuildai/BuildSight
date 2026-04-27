@@ -38,7 +38,7 @@ from typing import List, Optional, Any
 logger = logging.getLogger("buildsight")
 
 from fastapi import APIRouter, HTTPException, UploadFile, File
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 
 from .models import (
     GeoData,
@@ -747,4 +747,67 @@ async def sam_prompt(body: SAMPromptRequest):
 
     except Exception as exc:
         log.error("SAM prompt error: %s", exc)
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.post("/sam/detect")
+async def sam_detect():
+    """
+    Auto-detect zones using SAM with a 3x3 grid of point prompts on the
+    latest CCTV frame. Called by the DynamicZoneEditor 'SAM DETECT' button.
+    Returns GeoJSON features enriched with world-space coordinates.
+    """
+    from geoai_sam_util import segment_frame_async, is_available
+    import numpy as np
+    import cv2
+
+    if not is_available():
+        raise HTTPException(status_code=503, detail="SAM not loaded. Place sam_vit_b.pth in dashboard/backend/weights/")
+
+    jpeg = _get_latest_frame_jpeg()
+    if not jpeg:
+        raise HTTPException(status_code=404, detail="No active CCTV frame available. Start the detection pipeline first.")
+
+    analyzer = _get_sam_analyzer()
+
+    try:
+        arr       = np.frombuffer(jpeg, np.uint8)
+        frame_bgr = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+        h, w      = frame_bgr.shape[:2]
+
+        # 3×3 auto-grid prompts covering the site evenly
+        auto_pts = [(int(w * x / 4), int(h * y / 4)) for x in range(1, 4) for y in range(1, 4)]
+
+        raw_features = await segment_frame_async(frame_bgr, point_prompts=auto_pts, min_score=0.70)
+
+        if not raw_features:
+            return JSONResponse({"message": "SAM found no confident segments in current frame.", "features": []}, status_code=200)
+
+        results = []
+        for i, feat in enumerate(raw_features):
+            norm_polygon = feat["geometry"]["coordinates"][0]
+            confidence   = feat["properties"].get("confidence", 1.0)
+
+            if analyzer:
+                enrichment = analyzer.enrich_segment(norm_polygon)
+                results.append({
+                    "type": "Feature",
+                    "geometry": {"type": "Polygon", "coordinates": [enrichment["gps_polygon"]]},
+                    "properties": {
+                        "id":         f"sam-auto-{i+1}",
+                        "name":       f"SAM Zone {i+1}",
+                        "confidence": round(confidence, 3),
+                        "area_m2":    enrichment.get("area_m2", 0),
+                        "centroid":   enrichment.get("centroid_gps"),
+                        "source":     "SAM_AUTO",
+                    },
+                })
+            else:
+                results.append(feat)
+
+        log.info("SAM auto-detect: %d zone(s) returned", len(results))
+        return {"features": results, "count": len(results)}
+
+    except Exception as exc:
+        log.error("SAM auto-detect error: %s", exc)
         raise HTTPException(status_code=500, detail=str(exc))

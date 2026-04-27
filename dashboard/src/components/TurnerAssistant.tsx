@@ -190,6 +190,10 @@ export const TurnerAssistant: React.FC<{ isHero?: boolean; onOpenSettings?: () =
   const [uiIssue, setUiIssue] = useState<TurnerIssue | null>(null)
   const [isDelayed, setIsDelayed] = useState(false)
   const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null)
+  const [voiceMode, setVoiceMode] = useState(false)
+  const [isSpeaking, setIsSpeaking] = useState(false)
+  const [isPresenting, setIsPresenting] = useState(false)
+  const audioRef = useRef<HTMLAudioElement | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const messagesRef = useRef<Message[]>(messages)
 
@@ -270,6 +274,52 @@ export const TurnerAssistant: React.FC<{ isHero?: boolean; onOpenSettings?: () =
       window.removeEventListener('keydown', onKeyDown)
     }
   }, [isExpanded])
+
+  const playAudioB64 = (b64: string) => {
+    try {
+      const binary = atob(b64)
+      const bytes = new Uint8Array(binary.length)
+      for (let i = 0; i < binary.length; i++) {
+        bytes[i] = binary.charCodeAt(i)
+      }
+      const blob = new Blob([bytes], { type: 'audio/mpeg' })
+      const url = URL.createObjectURL(blob)
+      if (audioRef.current) {
+        audioRef.current.pause()
+        URL.revokeObjectURL(audioRef.current.src)
+      }
+      const audio = new Audio(url)
+      audioRef.current = audio
+      setIsSpeaking(true)
+      audio.onended = () => {
+        setIsSpeaking(false)
+        URL.revokeObjectURL(url)
+      }
+      audio.onerror = () => setIsSpeaking(false)
+      void audio.play()
+    } catch {
+      setIsSpeaking(false)
+    }
+  }
+
+  const handlePresent = async () => {
+    if (isPresenting) return
+    setIsPresenting(true)
+    try {
+      const resp = await fetch('http://localhost:8000/api/ai/introduce')
+      const data = await resp.json() as { script?: string; audio_b64?: string; greeting?: string }
+      if (data.script) {
+        setMessages((prev) => [...prev, createMessage('assistant', data.script!)])
+      }
+      if (data.audio_b64) {
+        playAudioB64(data.audio_b64)
+      }
+    } catch {
+      setMessages((prev) => [...prev, createMessage('assistant', 'Voice introduction unavailable — check ElevenLabs config.')])
+    } finally {
+      setIsPresenting(false)
+    }
+  }
 
   const workers = Math.max(stats.totalWorkers, 0)
   const activeAlerts = liveAlerts.slice(0, 5)
@@ -355,6 +405,7 @@ export const TurnerAssistant: React.FC<{ isHero?: boolean; onOpenSettings?: () =
         const decoder = new TextDecoder()
         let buffer = ''
         let hasContent = false
+        let fullText = ''
 
         if (reader) {
           while (true) {
@@ -389,6 +440,7 @@ export const TurnerAssistant: React.FC<{ isHero?: boolean; onOpenSettings?: () =
                 }
                 if (parsed.token) {
                   hasContent = true
+                  fullText += parsed.token
                   setMessages((prev) => prev.map((message) => (
                     message.id === assistantId
                       ? { ...message, content: message.content + parsed.token }
@@ -400,6 +452,17 @@ export const TurnerAssistant: React.FC<{ isHero?: boolean; onOpenSettings?: () =
               }
             }
           }
+        }
+
+        if (hasContent && voiceMode && fullText.trim()) {
+          fetch('http://localhost:8000/api/ai/tts', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: fullText.trim() }),
+          })
+            .then((r) => r.json())
+            .then((d: { audio_b64?: string }) => { if (d.audio_b64) playAudioB64(d.audio_b64) })
+            .catch(() => undefined)
         }
 
         if (!hasContent) {
@@ -447,6 +510,16 @@ export const TurnerAssistant: React.FC<{ isHero?: boolean; onOpenSettings?: () =
       }
 
       setMessages((prev) => [...prev, createMessage('assistant', reply)])
+      if (voiceMode && reply) {
+        fetch('http://localhost:8000/api/ai/tts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: reply }),
+        })
+          .then((r) => r.json())
+          .then((d: { audio_b64?: string }) => { if (d.audio_b64) playAudioB64(d.audio_b64) })
+          .catch(() => undefined)
+      }
     } catch {
       setUiIssue({
         kind: 'network',
@@ -659,6 +732,41 @@ export const TurnerAssistant: React.FC<{ isHero?: boolean; onOpenSettings?: () =
             {!inModal && (
               <p className="panel-meta">Live site questions, summaries, and follow-up actions</p>
             )}
+            <div className="turner-voice-controls">
+              <button
+                type="button"
+                className={`turner-voice-btn turner-voice-btn--present ${isPresenting ? 'turner-voice-btn--active' : ''}`}
+                onClick={() => { void handlePresent() }}
+                disabled={isPresenting}
+                title="Turner introduces himself with Daniel voice"
+              >
+                {isPresenting ? 'Presenting...' : 'Present Turner'}
+              </button>
+              <button
+                type="button"
+                className={`turner-voice-btn turner-voice-btn--toggle ${voiceMode ? 'turner-voice-btn--on' : ''}`}
+                onClick={() => setVoiceMode((v) => !v)}
+                title={voiceMode ? 'Voice mode on — click to mute' : 'Enable voice mode'}
+              >
+                {voiceMode ? (
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+                    <path d="M12 1a4 4 0 0 1 4 4v6a4 4 0 0 1-8 0V5a4 4 0 0 1 4-4Zm6.5 9a.5.5 0 0 1 1 0 7.5 7.5 0 0 1-15 0 .5.5 0 0 1 1 0 6.5 6.5 0 0 0 13 0ZM11.5 21.5v-2.55A7.51 7.51 0 0 1 4.5 11.5" />
+                    <path d="M12 19v2.5M9.5 21.5h5" />
+                  </svg>
+                ) : (
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+                    <path d="m3 3 18 18M9 9v2a3 3 0 0 0 5.12 2.12M15 9.34V5a3 3 0 0 0-5.94-.6M17.5 16.5A6.5 6.5 0 0 1 5.5 11" />
+                    <path d="M12 19v2.5M9.5 21.5h5" />
+                  </svg>
+                )}
+                <span>{voiceMode ? 'Voice On' : 'Voice Off'}</span>
+              </button>
+              {isSpeaking && (
+                <span className="turner-speaking-indicator" aria-label="Turner is speaking">
+                  <span /><span /><span /><span />
+                </span>
+              )}
+            </div>
             <button type="button" className="turner-assistant__expand" onClick={() => setIsExpanded(true)}>
               Expand
             </button>
