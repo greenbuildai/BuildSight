@@ -43,6 +43,32 @@ Integrate dynamic heatmap overlays into the `DetectionPanel` (Video/Image) and `
 - [DetectionPanel.tsx](file:///e:/Company/Green%20Build%20AI/Prototypes/BuildSight/dashboard/src/components/DetectionPanel.tsx)
 - [LiveFeed.tsx](file:///e:/Company/Green%20Build%20AI/Prototypes/BuildSight/dashboard/src/components/LiveFeed.tsx)
 
+
+---
+
+## URGENT: Voice Mode 3D Avatar Stability Fix
+
+**Assigned to:** Leon
+**Priority:** CRITICAL
+**Status:** BLOCKED BY RENDER ERROR
+
+### Problem Analysis
+The new "Turner AI" 3D Avatar in Voice Mode is experiencing a fatal **Render Error**:
+`Error: Data read, but end of buffer not reached`
+
+This is a **Spline Runtime Loader** failure. It occurs when the `.splinecode` binary file fails to parse correctly, likely due to:
+1.  **Network Instability**: The external Spline URL (`prod.spline.design/...`) is failing to deliver the full buffer.
+2.  **Version Mismatch**: The runtime (`^1.12.81`) might have a regression or incompatibility with the hosted scene version.
+
+### Required Action
+Leon, you must stabilize this asset immediately to restore Voice Mode functionality:
+1.  **Localize the Asset**: Do not rely on external Spline hosting. Export the "Tactical Orb" (Scene ID: `6Wq1Q7YGyWf8Z9ei`) as a `.splinecode` file.
+2.  **Directory**: Store the file in `dashboard/public/assets/models/turner_avatar.splinecode`.
+3.  **Code Update**: Modify `TurnerAvatar3D.tsx` (Line 17) to point to the local path: `/assets/models/turner_avatar.splinecode`.
+4.  **Compression**: If the file is too large, use Spline's "Draco" compression or optimize the mesh to ensure smooth loading on construction-site network conditions.
+
+**Verification**: Ensure the "BUILDSIGHT — RENDER ERROR" screen no longer appears when switching to the Voice tab.
+
 ---
 
 **Next Steps**: Do not wait. Execute with precision. BuildSight requires this intelligence layer to be the most premium in the industry.

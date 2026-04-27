@@ -11,10 +11,6 @@ import { useSettings } from '../SettingsContext'
 import { useDetectionStore } from '../store/detectionStore'
 import './GeoAIPage.css'
 
-function isOpticalVlmSource(source: string | undefined): boolean {
-  return source === 'florence2' || source === 'moondream2' || source === 'vlm_chained_with_turner_ai'
-}
-
 const MODE_META: Record<GeoAIMode, { label: string; detail: string; badge: string }> = {
   HEATMAP: {
     label: 'Live risk density',
@@ -94,33 +90,6 @@ export function GeoAIPage() {
 
   const [dynamicZones, setDynamicZones] = useState<DynamicZone[]>([])
   const [isZoneFormOpen, setIsZoneFormOpen] = useState(false)
-
-  // ── VLM Scene Narration ─────────────────────────────────────────────────────
-  const [vlmEntry, setVlmEntry] = useState<{ description: string; source: string; timestamp: number; question: string; vlm_available: boolean } | null>(null)
-  const [vlmLoading, setVlmLoading] = useState(false)
-  const [vlmQuestion, setVlmQuestion] = useState('')
-
-  const fetchVlm = (question?: string) => {
-    setVlmLoading(true)
-    const req = question
-      ? fetch('http://localhost:8000/api/geoai/vlm/query', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ question, force_refresh: true }),
-        })
-      : fetch('http://localhost:8000/api/geoai/vlm/latest')
-    req
-      .then(r => r.ok ? r.json() : null)
-      .then(d => { if (d) setVlmEntry(d) })
-      .catch(() => {})
-      .finally(() => setVlmLoading(false))
-  }
-
-  useEffect(() => {
-    fetchVlm()
-    const id = setInterval(() => fetchVlm(), 30_000)
-    return () => clearInterval(id)
-  }, [])
 
   // Load zones from backend on mount so map always shows persisted zones
   useEffect(() => {

@@ -2,6 +2,7 @@ import { createContext, useContext, useState, useCallback, useRef, useEffect, ty
 import type { AlertItem } from './components/AlertLog'
 import { useDetectionStore, type WorkerPosition, type ZoneViolation } from './store/detectionStore'
 import { useSettings } from './SettingsContext'
+import { buildPeakRiskMoment, mergePeakRiskMoments } from './lib/detectionIntelligence'
 
 /* ═══════════════════════════════════════════════════════════════════════════════
    BuildSight — Detection Pipeline Provider
@@ -258,26 +259,11 @@ export function DetectionPipelineProvider({ children }: { children: ReactNode })
         const elapsed = Math.round(performance.now() - t0)
         pushDetections(data.detections, elapsed, data.valid_workers, data.violations, undefined, data.condition)
         
-        // Peak Risk Moments Logic
-        const ppeViolations = data.detections.filter((d: any) => 
-          (d.class === 'worker' || d.class === 'person') && (!d.has_helmet || !d.has_vest)
-        )
-
-        if (ppeViolations.length >= 2) {
-          const currentMoments = store.peakRiskMoments
-          const alreadyExists = currentMoments.some(m => Math.abs(m.time - video.currentTime) < 2)
-          
-          if (!alreadyExists) {
-            const newMoment = {
-              time: video.currentTime,
-              score: ppeViolations.length,
-              type: 'PPE_VIOLATION' as const
-            }
-            const updatedMoments = [...currentMoments, newMoment]
-              .sort((a, b) => b.score - a.score)
-              .slice(0, 5)
-            store.setPeakRiskMoments(updatedMoments)
-          }
+        const nextMoment = buildPeakRiskMoment(data.detections, video.currentTime)
+        if (nextMoment) {
+          store.setPeakRiskMoments(
+            mergePeakRiskMoments(store.peakRiskMoments, nextMoment, 6, 1.75),
+          )
         }
 
         // Calculate Processing Rate (Inference FPS)

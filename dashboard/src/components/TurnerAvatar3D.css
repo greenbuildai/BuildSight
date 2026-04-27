@@ -1,0 +1,101 @@
+.turner-avatar-3d {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 50%;
+}
+
+/* Override parent container styles in TurnerAssistant */
+.chat-bubble__avatar--turner {
+  background: none !important;
+  border: none !important;
+  box-shadow: none !important;
+  overflow: visible !important;
+}
+
+.turner-avatar-3d--sm {
+  width: 2.2rem;
+  height: 2.2rem;
+}
+
+.turner-avatar-3d--md {
+  width: 2.8rem;
+  height: 2.8rem;
+}
+
+.turner-avatar-3d--lg {
+  width: 14rem;
+  height: 14rem;
+}
+
+.turner-avatar-3d__canvas {
+  width: 150% !important;
+  height: 150% !important;
+  flex-shrink: 0;
+}
+
+.turner-avatar-3d__overlay {
+  position: absolute;
+  inset: -10%;
+  pointer-events: none;
+  border-radius: 50%;
+  box-shadow: inset 0 0 50px rgba(0, 229, 255, 0.1), 0 0 30px rgba(0, 229, 255, 0.05);
+  border: 1px solid rgba(0, 229, 255, 0.15);
+  background: radial-gradient(circle at 50% 50%, rgba(0, 229, 255, 0.05) 0%, transparent 70%);
+  z-index: 2;
+  transition: all 0.5s ease;
+}
+
+.turner-avatar-3d::after {
+  content: '';
+  position: absolute;
+  inset: -20%;
+  background: radial-gradient(circle at 50% 50%, rgba(0, 229, 255, 0.1) 0%, transparent 60%);
+  filter: blur(40px);
+  z-index: -1;
+  opacity: 0.5;
+}
+
+.turner-avatar-3d--speaking .turner-avatar-3d__overlay {
+  box-shadow: inset 0 0 80px rgba(0, 229, 255, 0.4), 0 0 40px rgba(0, 229, 255, 0.3);
+  border-color: rgba(0, 229, 255, 0.8);
+  background: radial-gradient(circle at 50% 50%, rgba(0, 229, 255, 0.1) 0%, transparent 80%);
+  animation: orb-speaking 1.2s infinite ease-in-out;
+}
+
+.turner-avatar-3d--thinking .turner-avatar-3d__overlay {
+  box-shadow: inset 0 0 30px rgba(255, 140, 0, 0.3);
+  border-color: rgba(255, 140, 0, 0.3);
+  animation: orb-thinking 2s infinite linear;
+}
+
+@keyframes orb-speaking {
+  0%, 100% { transform: scale(1); opacity: 0.6; }
+  50% { transform: scale(1.08); opacity: 1; }
+}
+
+@keyframes orb-thinking {
+  0% { transform: rotate(0deg) scale(1); opacity: 0.4; }
+  50% { transform: rotate(180deg) scale(1.03); opacity: 0.7; }
+  100% { transform: rotate(360deg) scale(1); opacity: 0.4; }
+}
+
+.turner-avatar-3d__fallback {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #0a0e16;
+  color: var(--color-accent);
+}
+
+.turner-avatar-3d__fallback svg {
+  width: 40%;
+  height: 40%;
+  filter: drop-shadow(0 0 10px var(--color-accent));
+}

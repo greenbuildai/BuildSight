@@ -5,6 +5,11 @@ import { useDetectionPipeline, useDetectionStats } from '../DetectionStatsContex
 import { useDetectionStore } from '../store/detectionStore'
 import { useSettings } from '../SettingsContext'
 import PPEStatusPanel from './PPEStatusPanel'
+import {
+  buildPeakRiskMoment,
+  detectionsToHeatmapPoints,
+  mergePeakRiskMoments,
+} from '../lib/detectionIntelligence'
 import './DetectionPanel.css'
 
 const API = 'http://localhost:8000/api'
@@ -194,7 +199,7 @@ function drawHeatmap(
   if (activePoints.length === 0) return activePoints
 
   ctx.save()
-  ctx.globalCompositeOperation = 'source-over'
+  ctx.globalCompositeOperation = 'screen'
 
   activePoints.forEach(point => {
     const hx = point.x * rw + ox
@@ -661,7 +666,13 @@ function ImageUploadMode() {
 //   • Position lerp (α = 0.25/frame at 60 fps): smoothly slides each track's
 //     drawn box toward its latest detected position — no sudden jumps.
 //
-function VideoUploadMode() {
+function VideoUploadMode({
+  heatmapOverlayEnabled,
+  onToggleHeatmap,
+}: {
+  heatmapOverlayEnabled: boolean
+  onToggleHeatmap: () => void
+}) {
   const store = useDetectionStore()
   const pipeline = useDetectionPipeline()
   const { settings } = useSettings()
@@ -677,8 +688,6 @@ function VideoUploadMode() {
   const [error, setError] = useState<string | null>(null)
   const [roiDrawMode, setRoiDrawMode] = useState(false)
   const [roiDraft, setRoiDraft] = useState<[number, number][]>([])
-  const [showHeatmap, setShowHeatmap] = useState(false)
-
   // Condition is still partially local but synced to store
   const [condition, setCondition] = useState<Condition>(
     () => (sessionStorage.getItem('bs_condition') as Condition) ?? 'S1_normal'
@@ -691,7 +700,6 @@ function VideoUploadMode() {
   const overlayRef = useRef<HTMLCanvasElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const rafRef = useRef<number | null>(null)
-  const tracksRef = useRef<Track[]>([])
   const showHeatmapRef = useRef(false)  // updated by effect below
 
   // ROI persists in store
@@ -699,7 +707,7 @@ function VideoUploadMode() {
 
   const heatmapHistoryRef = useRef<HeatmapPoint[]>([])
 
-  useEffect(() => { showHeatmapRef.current = showHeatmap }, [showHeatmap])
+  useEffect(() => { showHeatmapRef.current = heatmapOverlayEnabled }, [heatmapOverlayEnabled])
 
   useEffect(() => {
     // Persist user preference to sessionStorage
@@ -709,6 +717,34 @@ function VideoUploadMode() {
 
   const videoUrl = useMemo(() => (file ? URL.createObjectURL(file) : null), [file])
   useEffect(() => () => { if (videoUrl) URL.revokeObjectURL(videoUrl) }, [videoUrl])
+
+  useEffect(() => {
+    const video = videoRef.current
+    if (!video || !store.detections.length) return
+
+    const MAX_INFER = 640
+    const vw = video.videoWidth || 640
+    const vh = video.videoHeight || 360
+    const inferScale = Math.min(1, MAX_INFER / Math.max(vw, vh, 1))
+    const frameWidth = Math.max(1, Math.round(vw * inferScale))
+    const frameHeight = Math.max(1, Math.round(vh * inferScale))
+
+    const nextPoints = detectionsToHeatmapPoints(
+      store.detections,
+      frameWidth,
+      frameHeight,
+      performance.now(),
+    )
+
+    if (nextPoints.length === 0) return
+    heatmapHistoryRef.current = [...heatmapHistoryRef.current, ...nextPoints].slice(-300)
+  }, [store.detections, currentTime])
+
+  useEffect(() => {
+    if (!file) {
+      heatmapHistoryRef.current = []
+    }
+  }, [file])
 
 
   // ── Sync display video with pipeline state ──────────────────────────────────
@@ -845,7 +881,18 @@ const fh = Math.max(1, Math.round(vh * inferScale))
 
     // ── Draw Heatmap ─────────────────────────────────────────────────────────
     if (showHeatmapRef.current && heatmapHistoryRef.current.length > 0) {
-      heatmapHistoryRef.current = drawHeatmap(ctx, heatmapHistoryRef.current, performance.now(), rw, rh, ox, oy)
+      heatmapHistoryRef.current = drawHeatmap(
+        ctx,
+        heatmapHistoryRef.current,
+        performance.now(),
+        rw,
+        rh,
+        ox,
+        oy,
+        7000,
+        28,
+        0.1,
+      )
     }
 
     // Always continue the animation loop
@@ -1141,10 +1188,10 @@ const fh = Math.max(1, Math.round(vh * inferScale))
                   {downloading ? 'PROCESSING...' : 'DOWNLOAD ANNOTATED'}
                 </button>
                 <button
-                  className={`det-run-btn ${showHeatmap ? 'det-run-btn--active' : ''}`}
-                  onClick={() => setShowHeatmap(!showHeatmap)}
+                  className={`det-run-btn ${heatmapOverlayEnabled ? 'det-run-btn--active' : ''}`}
+                  onClick={onToggleHeatmap}
                 >
-                  {showHeatmap ? 'HIDE HEATMAP' : 'SHOW HEATMAP'}
+                  {heatmapOverlayEnabled ? 'HIDE HEATMAP' : 'SHOW HEATMAP'}
                 </button>
                 <button className="det-reset-btn" onClick={() => pipeline.stopDetection()}>
                   CHANGE VIDEO
@@ -1384,16 +1431,11 @@ export function LiveMode() {
           })
 
           // Peak Risk Moments logic for LiveMode
-          const violations = data.detections.filter((d: Detection) =>
-            (d.class === 'worker' || d.class === 'person') && (!d.has_helmet || !d.has_vest)
-          )
-          if (violations.length >= 1) {
-            const currentMoments = store.peakRiskMoments
-            if (!currentMoments.some(m => Math.abs(m.time - 0) < 1.0)) { // Use 0 or local index for Live
-               const newMoment = { time: 0, score: violations.length, type: 'PPE_VIOLATION' as const }
-               const updated = [...currentMoments, newMoment].slice(-6)
-               store.setPeakRiskMoments(updated)
-            }
+          const nextMoment = buildPeakRiskMoment(data.detections, 0)
+          if (nextMoment) {
+            store.setPeakRiskMoments(
+              mergePeakRiskMoments(store.peakRiskMoments, nextMoment, 6, 1),
+            )
           }
         } else if (!res.ok) {
           inferErrorCountRef.current += 1
@@ -1567,6 +1609,7 @@ interface DetectionPanelProps {
 export function DetectionPanel({ mode }: DetectionPanelProps) {
   const [apiOk, setApiOk] = useState<boolean | null>(null)
   const [modelMode, setModelMode] = useState('')
+  const [heatmapOverlayEnabled, setHeatmapOverlayEnabled] = useState(false)
   const { setModelName } = useDetectionStats()
   const title = mode === 'VIDEO' ? 'PPE Detection - Video Workspace' : 'PPE Detection - Image Workspace'
   const meta = mode === 'VIDEO'
@@ -1597,7 +1640,14 @@ export function DetectionPanel({ mode }: DetectionPanelProps) {
       </div>
 
       <div className="det-body">
-        {mode === 'IMAGE' ? <ImageUploadMode /> : <VideoUploadMode />}
+        {mode === 'IMAGE' ? (
+          <ImageUploadMode />
+        ) : (
+          <VideoUploadMode
+            heatmapOverlayEnabled={heatmapOverlayEnabled}
+            onToggleHeatmap={() => setHeatmapOverlayEnabled((enabled) => !enabled)}
+          />
+        )}
       </div>
     </div>
   )

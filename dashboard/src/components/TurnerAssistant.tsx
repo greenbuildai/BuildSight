@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useDetectionStats } from '../DetectionStatsContext'
 import { useSettings } from '../SettingsContext'
+import TurnerAvatar3D from './TurnerAvatar3D'
 
 interface Message {
   id: string
@@ -131,7 +132,17 @@ function classifyIssue(status?: number, message?: string): TurnerIssue | null {
   return null
 }
 
-function ChatAvatar({ role }: { role: Message['role'] }) {
+function ChatAvatar({ 
+  role, 
+  isSpeaking = false, 
+  isThinking = false,
+  size = 'md'
+}: { 
+  role: Message['role'], 
+  isSpeaking?: boolean, 
+  isThinking?: boolean,
+  size?: 'sm' | 'md' | 'lg'
+}) {
   if (role === 'user') {
     return (
       <span className="chat-bubble__avatar-icon" aria-hidden="true">
@@ -143,11 +154,11 @@ function ChatAvatar({ role }: { role: Message['role'] }) {
   }
 
   return (
-    <span className="chat-bubble__avatar-icon" aria-hidden="true">
-      <svg viewBox="0 0 24 24" focusable="false">
-        <path d="M12 3.2 5.8 6v3.2c0 4 2.6 7.7 6.2 8.9 3.6-1.2 6.2-4.9 6.2-8.9V6L12 3.2Zm0 2.1 3.8 1.7v2.2h-1.1v1.6a2.7 2.7 0 0 1-5.4 0V9.2H8.2V7l3.8-1.7Zm-1 5.5h2v.6a1 1 0 0 1-2 0v-.6Zm-2.8 8.1c1.1-.5 2.4-.8 3.8-.8s2.7.3 3.8.8v1.9H8.2v-1.9Z" fill="currentColor" />
-      </svg>
-    </span>
+    <TurnerAvatar3D 
+      isSpeaking={isSpeaking} 
+      isThinking={isThinking} 
+      size={size}
+    />
   )
 }
 
@@ -192,7 +203,6 @@ export const TurnerAssistant: React.FC<{ isHero?: boolean; onOpenSettings?: () =
   const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null)
   const [voiceMode, setVoiceMode] = useState(false)
   const [isSpeaking, setIsSpeaking] = useState(false)
-  const [isPresenting, setIsPresenting] = useState(false)
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const messagesRef = useRef<Message[]>(messages)
@@ -299,25 +309,6 @@ export const TurnerAssistant: React.FC<{ isHero?: boolean; onOpenSettings?: () =
       void audio.play()
     } catch {
       setIsSpeaking(false)
-    }
-  }
-
-  const handlePresent = async () => {
-    if (isPresenting) return
-    setIsPresenting(true)
-    try {
-      const resp = await fetch('http://localhost:8000/api/ai/introduce')
-      const data = await resp.json() as { script?: string; audio_b64?: string; greeting?: string }
-      if (data.script) {
-        setMessages((prev) => [...prev, createMessage('assistant', data.script!)])
-      }
-      if (data.audio_b64) {
-        playAudioB64(data.audio_b64)
-      }
-    } catch {
-      setMessages((prev) => [...prev, createMessage('assistant', 'Voice introduction unavailable — check ElevenLabs config.')])
-    } finally {
-      setIsPresenting(false)
     }
   }
 
@@ -458,7 +449,7 @@ export const TurnerAssistant: React.FC<{ isHero?: boolean; onOpenSettings?: () =
           fetch('http://localhost:8000/api/ai/tts', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ text: fullText.trim() }),
+            body: JSON.stringify({ message: fullText.trim() }),
           })
             .then((r) => r.json())
             .then((d: { audio_b64?: string }) => { if (d.audio_b64) playAudioB64(d.audio_b64) })
@@ -514,7 +505,7 @@ export const TurnerAssistant: React.FC<{ isHero?: boolean; onOpenSettings?: () =
         fetch('http://localhost:8000/api/ai/tts', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text: reply }),
+          body: JSON.stringify({ message: reply }),
         })
           .then((r) => r.json())
           .then((d: { audio_b64?: string }) => { if (d.audio_b64) playAudioB64(d.audio_b64) })
@@ -559,8 +550,13 @@ export const TurnerAssistant: React.FC<{ isHero?: boolean; onOpenSettings?: () =
               animate={{ opacity: 1, scale: 1, y: 0 }}
               transition={{ type: 'spring', stiffness: 400, damping: 32 }}
             >
-              <div className="chat-bubble__avatar" aria-hidden="true">
-                <ChatAvatar role={message.role} />
+              <div className={`chat-bubble__avatar ${message.role === 'assistant' ? 'chat-bubble__avatar--turner' : ''}`} aria-hidden="true">
+                <ChatAvatar 
+                  role={message.role} 
+                  isSpeaking={message.role === 'assistant' && isSpeaking && message.id === messages[messages.length - 1].id}
+                  isThinking={message.role === 'assistant' && message.id === streamingMessageId}
+                  size="sm"
+                />
               </div>
               <div className="chat-bubble__main">
                 <div className="chat-bubble__meta">
@@ -587,8 +583,8 @@ export const TurnerAssistant: React.FC<{ isHero?: boolean; onOpenSettings?: () =
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0 }}
             >
-              <div className="chat-bubble__avatar" aria-hidden="true">
-                <ChatAvatar role="assistant" />
+              <div className="chat-bubble__avatar chat-bubble__avatar--turner" aria-hidden="true">
+                <ChatAvatar role="assistant" isThinking={true} size="md" />
               </div>
               <div className="chat-bubble__main">
                 <div className="chat-bubble__meta">
@@ -692,6 +688,18 @@ export const TurnerAssistant: React.FC<{ isHero?: boolean; onOpenSettings?: () =
             </span>
             <span className="turner-composer__model-readout">{stats.modelName || 'AI route standby'}</span>
             <span className="turner-composer__context">{activeAlerts.length} active alerts</span>
+            <button
+              type="button"
+              className={`turner-mic-toggle ${voiceMode ? 'turner-mic-toggle--on' : ''}`}
+              onClick={() => setVoiceMode((v) => !v)}
+              title={voiceMode ? 'Voice replies on — click to mute' : 'Enable voice replies'}
+            >
+              {isSpeaking
+                ? <span className="turner-speaking-indicator" aria-label="Speaking"><span /><span /><span /><span /></span>
+                : <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor" aria-hidden="true"><path d="M12 1a4 4 0 0 1 4 4v6a4 4 0 0 1-8 0V5a4 4 0 0 1 4-4Zm0 14.5a6.5 6.5 0 0 0 6.5-6.5.5.5 0 0 1 1 0 7.5 7.5 0 0 1-7 7.48V19h2a.5.5 0 0 1 0 1h-5a.5.5 0 0 1 0-1h2v-2.02A7.5 7.5 0 0 1 4.5 9a.5.5 0 0 1 1 0 6.5 6.5 0 0 0 6.5 6.5Z"/></svg>
+              }
+              <span>{voiceMode ? 'Voice' : 'Mute'}</span>
+            </button>
           </div>
         </div>
       </form>
@@ -732,42 +740,7 @@ export const TurnerAssistant: React.FC<{ isHero?: boolean; onOpenSettings?: () =
             {!inModal && (
               <p className="panel-meta">Live site questions, summaries, and follow-up actions</p>
             )}
-            <div className="turner-voice-controls">
-              <button
-                type="button"
-                className={`turner-voice-btn turner-voice-btn--present ${isPresenting ? 'turner-voice-btn--active' : ''}`}
-                onClick={() => { void handlePresent() }}
-                disabled={isPresenting}
-                title="Turner introduces himself with Daniel voice"
-              >
-                {isPresenting ? 'Presenting...' : 'Present Turner'}
-              </button>
-              <button
-                type="button"
-                className={`turner-voice-btn turner-voice-btn--toggle ${voiceMode ? 'turner-voice-btn--on' : ''}`}
-                onClick={() => setVoiceMode((v) => !v)}
-                title={voiceMode ? 'Voice mode on — click to mute' : 'Enable voice mode'}
-              >
-                {voiceMode ? (
-                  <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
-                    <path d="M12 1a4 4 0 0 1 4 4v6a4 4 0 0 1-8 0V5a4 4 0 0 1 4-4Zm6.5 9a.5.5 0 0 1 1 0 7.5 7.5 0 0 1-15 0 .5.5 0 0 1 1 0 6.5 6.5 0 0 0 13 0ZM11.5 21.5v-2.55A7.51 7.51 0 0 1 4.5 11.5" />
-                    <path d="M12 19v2.5M9.5 21.5h5" />
-                  </svg>
-                ) : (
-                  <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
-                    <path d="m3 3 18 18M9 9v2a3 3 0 0 0 5.12 2.12M15 9.34V5a3 3 0 0 0-5.94-.6M17.5 16.5A6.5 6.5 0 0 1 5.5 11" />
-                    <path d="M12 19v2.5M9.5 21.5h5" />
-                  </svg>
-                )}
-                <span>{voiceMode ? 'Voice On' : 'Voice Off'}</span>
-              </button>
-              {isSpeaking && (
-                <span className="turner-speaking-indicator" aria-label="Turner is speaking">
-                  <span /><span /><span /><span />
-                </span>
-              )}
-            </div>
-            <button type="button" className="turner-assistant__expand" onClick={() => setIsExpanded(true)}>
+              <button type="button" className="turner-assistant__expand" onClick={() => setIsExpanded(true)}>
               Expand
             </button>
           </div>

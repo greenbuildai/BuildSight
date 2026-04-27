@@ -35,7 +35,7 @@ from pydantic import BaseModel
 import requests as _requests
 import asyncio
 from typing import Set
-from fastapi import FastAPI, File, Form, HTTPException, Request, Response, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
@@ -476,9 +476,10 @@ TURNER_SYSTEM_PROMPT = """
 You are Turner, the Chief AI Site Supervisor for BuildSight.
 
 Identity & Tone:
-- Authoritative, disciplined, and strictly focused on site safety.
-- Speak like a veteran construction foreperson: direct, concise, and action-oriented.
-- Your goal is zero safety incidents.
+- You have two distinct personas based on user intent:
+  1. CASUAL/GREETING: Warm, professional, and welcoming. Use this for greetings or general site introductions.
+  2. SAFETY/TECHNICAL: Authoritative, disciplined, and strictly focused on site safety. Speak like a veteran construction foreperson: direct, concise, and action-oriented.
+- Your primary goal is zero safety incidents.
 
 Capabilities:
 - You have a live data link to the site's telemetry (worker counts, PPE, environmental conditions, and alerts).
@@ -487,8 +488,8 @@ Capabilities:
 
 Response Protocol:
 1. Ground every response in the 'context' provided (live telemetry).
-2. If compliance is suboptimal, call it out first and demand corrective action.
-3. Keep responses compact. Use 2-5 authoritative bullet points.
+2. For safety queries, if compliance is suboptimal, call it out first and demand corrective action.
+3. Keep responses compact. For safety queries, use 2-5 authoritative bullet points.
 4. If asked generic questions, answer through the lens of site safety and operator priority.
 5. Do not hallucinate. If data is missing, state it plainly.
 """.strip()
@@ -3247,8 +3248,10 @@ async def turner_tts(req: ChatRequest):
         raise HTTPException(status_code=400, detail="No text provided.")
 
     try:
+        import base64
         audio = await _elevenlabs_tts(text)
-        return Response(content=audio, media_type="audio/mpeg")
+        audio_b64 = base64.b64encode(audio).decode()
+        return {"audio_b64": audio_b64, "voice": "Daniel"}
     except Exception as e:
         logger.error("ElevenLabs TTS error: %s", e)
         raise HTTPException(status_code=502, detail=f"TTS failed: {e}")
@@ -3316,7 +3319,19 @@ async def turner_speak(req: ChatRequest):
     except Exception:
         pass
 
-    full_prompt = _build_site_prompt(req)
+    # ── Persona Interceptor (Casual vs. Technical) ────────────────────────────
+    msg_lower = req.message.lower()
+    is_greeting = any(word in msg_lower for word in ["hi", "hello", "hey", "morning", "evening", "who are you"])
+    
+    # If it's a simple greeting without safety keywords, use a warm persona
+    safety_keywords = ["ppe", "helmet", "vest", "worker", "compliance", "violation", "alert", "danger", "risk", "zone"]
+    has_safety_intent = any(kw in msg_lower for kw in safety_keywords)
+
+    if is_greeting and not has_safety_intent:
+        # Override prompt to force warm persona
+        full_prompt = f"The user is greeting you casually. Respond with your warm, professional persona. Do not lecture on safety yet unless asked. User said: {req.message}"
+    else:
+        full_prompt = _build_site_prompt(req)
 
     response_text = ""
     if mistral_enabled:
@@ -3349,6 +3364,40 @@ async def turner_speak(req: ChatRequest):
     except Exception as e:
         logger.error("Turner speak TTS error: %s", e)
         return {"response": response_text, "audio_b64": None, "error": str(e)}
+
+
+@app.post("/api/ai/transcribe")
+async def turner_transcribe(audio: UploadFile = File(...)):
+    """
+    Robust Speech-to-Text via Gemini 2.0 Flash.
+    Takes a .webm/.wav blob from the frontend and returns transcribed text.
+    Bypasses flaky browser webkitSpeechRecognition network errors.
+    """
+    if not ai_model:
+        raise HTTPException(status_code=503, detail="Gemini (ai_model) not configured for transcription.")
+
+    try:
+        audio_bytes = await audio.read()
+        if not audio_bytes:
+            return {"text": ""}
+
+        # Use Gemini 2.0 Flash for zero-latency multimodal transcription
+        # We send the bytes directly with the correct mime-type
+        response = await run_in_threadpool(
+            ai_model.generate_content,
+            [
+                "Transcribe this audio exactly as heard. Do not add any punctuation or formatting if not present. If no speech is detected, return exactly an empty string.",
+                {"mime_type": audio.content_type or "audio/webm", "data": audio_bytes}
+            ]
+        )
+        
+        transcription = _extract_response_text(response).strip()
+        logger.info(f"[STT] Transcribed {len(audio_bytes)} bytes -> '{transcription}'")
+        
+        return {"text": transcription}
+    except Exception as e:
+        logger.error("Turner transcription error: %s", e)
+        return JSONResponse(status_code=500, content={"error": str(e), "text": ""})
 
 
 if __name__ == "__main__":

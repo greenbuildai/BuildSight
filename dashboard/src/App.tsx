@@ -29,7 +29,7 @@ import { DetectionPanel } from './components/DetectionPanel'
 import { SettingsPanel } from './components/SettingsPanel'
 import { SettingsProvider, useSettings } from './SettingsContext'
 import { DetectionStatsProvider, useDetectionStats } from './DetectionStatsContext'
-import { TurnerAssistant } from './components/TurnerAssistant'
+import { TurnerPage } from './components/TurnerPage'
 import { AnalyticsPage } from './components/AnalyticsPage'
 import { GeoAIPage } from './components/GeoAIPage'
 import { BuildSightBrain } from './components/BuildSightBrain'
@@ -109,7 +109,7 @@ const alerts: AlertItem[] = [
 
 
 
-type View = 'dashboard' | 'settings' | 'analytics' | 'geoai' | 'brain'
+type View = 'dashboard' | 'settings' | 'analytics' | 'geoai' | 'brain' | 'turner'
 type DashboardMode = 'LIVE' | 'VIDEO' | 'IMAGE'
 
 function formatIstSnapshot() {
@@ -351,9 +351,12 @@ function AppInner() {
             <a className={`nav-link ${view === 'dashboard' ? '' : 'nav-link--dim'}`} href="#metrics" onClick={() => setView('dashboard')}>
               Compliance Metrics
             </a>
-            <a className={`nav-link ${view === 'dashboard' ? '' : 'nav-link--dim'}`} href="#ai-supervisor" onClick={() => setView('dashboard')}>
+            <button
+              className={`nav-link ${view === 'turner' ? 'nav-link--active' : ''}`}
+              onClick={() => setView('turner')}
+            >
               AI Supervisor Terminal
-            </a>
+            </button>
             <a className={`nav-link ${view === 'dashboard' ? '' : 'nav-link--dim'}`} href="#alerts" onClick={() => setView('dashboard')}>
               Alert Escalation
             </a>
@@ -502,11 +505,7 @@ function AppInner() {
             </section>
 
             <section className="lower-grid">
-              <div className="panel terminal-panel" id="ai-supervisor">
-                <TurnerAssistant onOpenSettings={() => setView('settings')} />
-              </div>
-
-              <div className="panel" id="alerts">
+              <div className="panel" id="alerts" style={{ gridColumn: '1 / -1' }}>
                 {renderEscalationQueue(false)}
               </div>
             </section>
@@ -562,6 +561,10 @@ function AppInner() {
         </main>
       )}
 
+      {view === 'turner' && (
+        <TurnerPage onBack={() => setView('dashboard')} onOpenSettings={() => setView('settings')} />
+      )}
+
       {view === 'settings' && (
         <main className="dashboard dashboard--settings">
           <header className="topbar">
@@ -606,8 +609,24 @@ function AppInner() {
       </AnimatePresence>
 
       {/* ── PERSISTENT DETECTION STATUS BAR ──────────────────────────────────── */}
-      {/* Visible on all tabs while background detection is running */}
       <DetectionStatusBar />
+
+      {/* ── FLOATING TURNER AI BUTTON ─────────────────────────────────────────── */}
+      {view !== 'brain' && view !== 'turner' && (
+        <button
+          type="button"
+          className="turner-fab"
+          onClick={() => setView('turner')}
+          aria-label="Open Turner AI Supervisor"
+          title="Open Turner AI"
+        >
+          <span className="turner-fab__ring" aria-hidden="true" />
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true">
+            <path d="M12 2a2 2 0 0 1 2 2v1h1a3 3 0 0 1 3 3v1a3 3 0 0 1-3 3h-1v1a2 2 0 0 1-4 0v-1H9a3 3 0 0 1-3-3V8a3 3 0 0 1 3-3h1V4a2 2 0 0 1 2-2Zm-1 7H9a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1h2v-3Zm2 0v3h2a1 1 0 0 0 1-1V9a1 1 0 0 0-1-1h-2Zm-1 6a4 4 0 0 0 4-4h-8a4 4 0 0 0 4 4Zm-4 2h8l1 3H6l1-3Z" />
+          </svg>
+          <span className="turner-fab__label">Turner AI</span>
+        </button>
+      )}
     </div>
 )
 }

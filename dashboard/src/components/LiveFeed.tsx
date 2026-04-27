@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useDetectionStats } from '../DetectionStatsContext'
+import { detectionsToHeatmapPoints } from '../lib/detectionIntelligence'
 
 const detections = [
   { label: 'NO HARDHAT', top: '20%', left: '18%', width: '24%', height: '28%', tone: 'critical', conf: 0.91 },
@@ -20,7 +21,13 @@ export function LiveFeed({ confidenceThreshold }: LiveFeedProps) {
 
   const [showHeatmap, setShowHeatmap] = useState(false)
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const heatmapHistory = useRef<{ x: number, y: number, time: number, tone: string }[]>([])
+  const heatmapHistory = useRef<Array<{
+    x: number
+    y: number
+    time: number
+    tone: string
+    radius: number
+  }>>([])
 
   useEffect(() => {
     setRunning(true)
@@ -33,14 +40,38 @@ export function LiveFeed({ confidenceThreshold }: LiveFeedProps) {
       }))
       pushDetections(mapped, 12)
 
-      // Add to heatmap history
       const now = performance.now()
-      visible.forEach(d => {
-        // Parse percentages like "20%" to [0, 1]
-        const x = parseFloat(d.left) / 100
-        const y = parseFloat(d.top) / 100
-        heatmapHistory.current.push({ x, y, time: now, tone: d.tone })
+      const pseudoDetections = visible.map((d) => {
+        const left = parseFloat(d.left) / 100
+        const top = parseFloat(d.top) / 100
+        const width = parseFloat(d.width) / 100
+        const height = parseFloat(d.height) / 100
+
+        return {
+          class: d.label.includes('ARC') ? 'person' : 'worker',
+          confidence: d.conf,
+          has_helmet: !d.label.includes('NO HARDHAT'),
+          has_vest: !d.label.includes('VEST LOW'),
+          box: [
+            Math.round(left * 1000),
+            Math.round(top * 1000),
+            Math.round((left + width) * 1000),
+            Math.round((top + height) * 1000),
+          ] as [number, number, number, number],
+        }
       })
+
+      const nextPoints = detectionsToHeatmapPoints(pseudoDetections, 1000, 1000, now)
+      heatmapHistory.current.push(
+        ...nextPoints.map((point) => ({
+          x: point.x,
+          y: point.y,
+          time: point.time,
+          tone: point.type === 'violation' ? 'critical' : 'neutral',
+          radius: point.type === 'violation' ? 34 : 24,
+        })),
+      )
+      heatmapHistory.current = heatmapHistory.current.slice(-240)
     }, 1000)
 
     // Drawing Loop
@@ -62,22 +93,34 @@ export function LiveFeed({ confidenceThreshold }: LiveFeedProps) {
             // Clean up old points (> 1.5s)
             heatmapHistory.current = heatmapHistory.current.filter(p => now - p.time < 1500)
             
-            heatmapHistory.current.forEach(p => {
+            ctx.save()
+            ctx.globalCompositeOperation = 'screen'
+
+            heatmapHistory.current.forEach((p, index) => {
               const hx = p.x * w
               const hy = p.y * h
               const age = (now - p.time) / 1500
-              const opacity = Math.max(0, (1 - age) * 0.05)
-              
-              const grad = ctx.createRadialGradient(hx, hy, 0, hx, hy, 20)
-              const color = p.tone === 'critical' ? '255, 42, 42' : '0, 255, 136'
+              const opacity = Math.max(0, (1 - age) * (p.tone === 'critical' ? 0.11 : 0.06))
+              const sweep = ((now / 220) + index * 0.6) % (Math.PI * 2)
+
+              const grad = ctx.createRadialGradient(hx, hy, 0, hx, hy, p.radius)
+              const color = p.tone === 'critical' ? '255, 96, 40' : '0, 255, 136'
               grad.addColorStop(0, `rgba(${color}, ${opacity})`)
               grad.addColorStop(1, `rgba(${color}, 0)`)
-              
+
               ctx.fillStyle = grad
               ctx.beginPath()
-              ctx.arc(hx, hy, 20, 0, Math.PI * 2)
+              ctx.arc(hx, hy, p.radius, 0, Math.PI * 2)
               ctx.fill()
+
+              ctx.strokeStyle = `rgba(${color}, ${opacity * 1.8})`
+              ctx.lineWidth = 1.5
+              ctx.beginPath()
+              ctx.arc(hx, hy, p.radius * (1.1 + age * 0.6), sweep, sweep + Math.PI / 2.75)
+              ctx.stroke()
             })
+
+            ctx.restore()
           }
         }
       }
